@@ -32,6 +32,7 @@ ln -s "$PWD/prompts/autonomous-senior-engineer.prompt.md" \
 
 The loop drives tasks in a tasks JSON file (default: `prd.json`) using the task agent.
 It operates on the current working directory by default.
+Use `prd.schema.json` for editor validation and autocomplete.
 
 ```bash
 ralph-loop \

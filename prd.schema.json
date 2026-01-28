@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "prd.schema.json",
+  "title": "Lever tasks file",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["tasks"],
+  "properties": {
+    "tasks": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/task" }
+    }
+  },
+  "$defs": {
+    "task": {
+      "type": "object",
+      "required": ["task_id", "status", "model"],
+      "properties": {
+        "task_id": { "type": "string", "minLength": 1 },
+        "status": {
+          "type": "string",
+          "enum": ["unstarted", "started", "blocked", "completed"]
+        },
+        "model": {
+          "type": "string",
+          "enum": ["gpt-5.1-codex-mini", "gpt-5.1-codex", "gpt-5.2-codex", "human"]
+        },
+        "assignee": { "type": "string" },
+        "observability": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "run_attempts": { "type": "integer", "minimum": 0 },
+            "last_note": { "type": "string" }
+          }
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}
