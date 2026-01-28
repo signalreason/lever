@@ -8,9 +8,8 @@ source "$TEST_DIR/helpers.sh"
 require_cmd jq
 
 repo_dir="$(make_temp_dir)"
-trap 'rm -rf "$repo_dir"' EXIT
-
-mkdir -p "$repo_dir/prompts"
+home_dir="$(make_temp_dir)"
+trap 'rm -rf "$repo_dir" "$home_dir"' EXIT
 cat > "$repo_dir/prd.json" <<'JSON'
 {
   "tasks": [
@@ -23,7 +22,8 @@ cat > "$repo_dir/prd.json" <<'JSON'
 }
 JSON
 
-cat > "$repo_dir/prompts/autonomous-senior-engineer.prompt.md" <<'EOF2'
+mkdir -p "$home_dir/.prompts"
+cat > "$home_dir/.prompts/autonomous-senior-engineer.prompt.md" <<'EOF2'
 Test prompt
 EOF2
 
@@ -41,10 +41,10 @@ args_file="$repo_dir/args.txt"
 run_dir="$(make_temp_dir)"
 trap 'rm -rf "$run_dir"' EXIT
 
+HOME="$home_dir" \
 ARGS_FILE="$args_file" "$TEST_DIR/../bin/ralph-loop.sh" \
   --workspace "$repo_dir" \
   --tasks prd.json \
-  --prompt prompts/autonomous-senior-engineer.prompt.md \
   --task-agent "$stub_dir/task-agent" \
   --assignee test-assignee \
   --delay 0 \
@@ -72,7 +72,7 @@ if ! grep -Fxq -- "--prompt" "$args_file"; then
   echo "Expected prompt path to be resolved against workspace" >&2
   exit 1
 fi
-if ! grep -Fxq -- "$repo_dir/prompts/autonomous-senior-engineer.prompt.md" "$args_file"; then
-  echo "Expected prompt path to be resolved against workspace" >&2
+if ! grep -Fxq -- "$home_dir/.prompts/autonomous-senior-engineer.prompt.md" "$args_file"; then
+  echo "Expected prompt path to use the default ~/.prompts location" >&2
   exit 1
 fi

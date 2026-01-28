@@ -11,9 +11,8 @@ require_cmd python
 
 repo_dir="$(make_temp_dir)"
 stub_bin="$(make_temp_dir)"
-trap 'rm -rf "$repo_dir" "$stub_bin"' EXIT
-
-mkdir -p "$repo_dir/prompts"
+home_dir="$(make_temp_dir)"
+trap 'rm -rf "$repo_dir" "$stub_bin" "$home_dir"' EXIT
 cat > "$repo_dir/prd.json" <<'JSON'
 {
   "tasks": [
@@ -26,7 +25,8 @@ cat > "$repo_dir/prd.json" <<'JSON'
 }
 JSON
 
-cat > "$repo_dir/prompts/autonomous-senior-engineer.prompt.md" <<'EOF2'
+mkdir -p "$home_dir/.prompts"
+cat > "$home_dir/.prompts/autonomous-senior-engineer.prompt.md" <<'EOF2'
 Test prompt
 EOF2
 
@@ -72,12 +72,13 @@ chmod +x "$stub_bin/codex"
 (
   cd "$repo_dir"
   git init -b main >/dev/null
-  git add README.md prd.json prompts/autonomous-senior-engineer.prompt.md
+  git add README.md prd.json
   GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.com \
   GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.com \
   git commit -m "init" >/dev/null
 )
 
+HOME="$home_dir" \
 PATH="$stub_bin:$PATH" \
   GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.com \
   GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.com \
@@ -86,7 +87,6 @@ PATH="$stub_bin:$PATH" \
   --tasks prd.json \
   --task-id T1 \
   --assignee test-assignee \
-  --prompt prompts/autonomous-senior-engineer.prompt.md \
   >/dev/null
 
 status="$(jq -r '.tasks[0].status' "$repo_dir/prd.json")"

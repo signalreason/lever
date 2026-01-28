@@ -14,7 +14,7 @@ info() {
 TRAIT_NAME="Ralph Wiggum"
 WORKSPACE="${WORKSPACE:-$PWD}"
 TASKS_FILE="${TASKS_FILE:-prd.json}"
-PROMPT_FILE="${PROMPT_FILE:-prompts/autonomous-senior-engineer.prompt.md}"
+PROMPT_FILE="${PROMPT_FILE:-$HOME/.prompts/autonomous-senior-engineer.prompt.md}"
 ASSIGNEE="${ASSIGNEE:-ralph-loop}"
 TASK_AGENT_BIN="${TASK_AGENT_BIN:-task-agent}"
 DELAY_SECONDS=0
@@ -35,7 +35,7 @@ Usage: ralph-loop [options]
 
 Options:
   --tasks PATH        Tasks file (default: prd.json)
-  --prompt PATH       Prompt file sent to task-agent (required)
+  --prompt PATH       Prompt file sent to task-agent (default: ~/.prompts/autonomous-senior-engineer.prompt.md)
   --assignee NAME     Assignee metadata (default: ralph-loop)
   --task-agent PATH   Path to task-agent driver (default: task-agent on PATH)
   --delay SECONDS     Pause between iterations (default: 0)

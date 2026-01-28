@@ -17,7 +17,7 @@ TASK_ID=""
 ASSIGNEE="${ASSIGNEE:-task-agent}"
 WORKSPACE="${WORKSPACE:-$PWD}"
 NEXT=false
-PROMPT_FILE=""
+PROMPT_FILE="${PROMPT_FILE:-$HOME/.prompts/autonomous-senior-engineer.prompt.md}"
 BASE_BRANCH="${BASE_BRANCH:-main}"
 TASK_BRANCH=""
 RUN_ATTEMPT=0
@@ -43,7 +43,7 @@ Options:
   --next       Select first task with status!=completed and model!=human
   --assignee   Name to store for observability
   --workspace  Repo directory to run in (default: current)
-  --prompt     Prompt file to send to the LLM
+  --prompt     Prompt file to send to the LLM (default: ~/.prompts/autonomous-senior-engineer.prompt.md)
   --reset-task Reset attempt counter/status for the selected task before running
 USAGE
 }
@@ -69,11 +69,6 @@ fi
 
 if [[ "$NEXT" != true && -z "$TASK_ID" ]]; then
   echo "Specify --task-id or --next" >&2
-  exit 2
-fi
-
-if [[ -z "$PROMPT_FILE" ]]; then
-  echo "--prompt is required" >&2
   exit 2
 fi
 
