@@ -8,7 +8,13 @@ die() {
 }
 
 info() {
-  printf '%s\n' "$*"
+  local msg="$*"
+  msg="${msg//$'\n'/ }"
+  printf '%s\n' "$msg"
+  if [[ -n "$LOG_FILE" ]]; then
+    mkdir -p "$(dirname "$LOG_FILE")"
+    printf '%s %s %s %s\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" "INFO" "ralph-loop" "$msg" >>"$LOG_FILE"
+  fi
 }
 
 TRAIT_NAME="Ralph Wiggum"
@@ -17,6 +23,7 @@ TASKS_FILE="${TASKS_FILE:-prd.json}"
 PROMPT_FILE="${PROMPT_FILE:-$HOME/.prompts/autonomous-senior-engineer.prompt.md}"
 ASSIGNEE="${ASSIGNEE:-ralph-loop}"
 TASK_AGENT_BIN="${TASK_AGENT_BIN:-task-agent}"
+LOG_FILE="${RALPH_LOG_FILE:-.ralph/ralph.log}"
 DELAY_SECONDS=0
 
 resolve_path() {
@@ -38,6 +45,7 @@ Options:
   --prompt PATH       Prompt file sent to task-agent (default: ~/.prompts/autonomous-senior-engineer.prompt.md)
   --assignee NAME     Assignee metadata (default: ralph-loop)
   --task-agent PATH   Path to task-agent driver (default: task-agent on PATH)
+  --log-file PATH     Append logs to this file (default: .ralph/ralph.log)
   --delay SECONDS     Pause between iterations (default: 0)
   --workspace PATH    Workspace directory (default: current directory)
   -h, --help          Show this help message
@@ -50,6 +58,7 @@ while [[ $# -gt 0 ]]; do
     --prompt) PROMPT_FILE="$2"; shift 2 ;;
     --assignee) ASSIGNEE="$2"; shift 2 ;;
     --task-agent) TASK_AGENT_BIN="$2"; shift 2 ;;
+    --log-file) LOG_FILE="$2"; shift 2 ;;
     --delay) DELAY_SECONDS="$2"; shift 2 ;;
     --workspace) WORKSPACE="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
@@ -64,6 +73,7 @@ fi
 WORKSPACE="$(cd "$WORKSPACE" && pwd)"
 TASKS_FILE="$(resolve_path "$TASKS_FILE" "$WORKSPACE")"
 PROMPT_FILE="$(resolve_path "$PROMPT_FILE" "$WORKSPACE")"
+LOG_FILE="$(resolve_path "$LOG_FILE" "$WORKSPACE")"
 
 if [[ ! -f "$TASKS_FILE" ]]; then
   die "Tasks file not found: $TASKS_FILE"
@@ -132,7 +142,7 @@ while true; do
   info "Cycle $cycle: running ${task_id} (status=${task_status})"
 
   set +e
-  "$TASK_AGENT_BIN" --tasks "$TASKS_FILE" --task-id "$task_id" --assignee "$ASSIGNEE" --prompt "$PROMPT_FILE" --workspace "$WORKSPACE"
+  "$TASK_AGENT_BIN" --tasks "$TASKS_FILE" --task-id "$task_id" --assignee "$ASSIGNEE" --prompt "$PROMPT_FILE" --workspace "$WORKSPACE" --log-file "$LOG_FILE"
   exit_code=$?
   set -e
 

@@ -44,6 +44,7 @@ Common options:
 - `--prompt <path>`: prompt file used by the task agent (default: `~/.prompts/autonomous-senior-engineer.prompt.md`).
 - `--assignee <name>`: assignee label (default: `ralph-loop`).
 - `--task-agent <path>`: task agent executable (default: `task-agent` on PATH).
+- `--log-file <path>`: append logs to this file (default: `.ralph/ralph.log`).
 - `--delay <seconds>`: pause between cycles.
 
 ## Task agent
@@ -64,6 +65,18 @@ task-agent \
   --tasks prd.json \
   --next \
   --assignee ralph-loop
+```
+
+Common task-agent options:
+- `--log-file <path>`: append logs to this file (default: `.ralph/ralph.log`).
+
+## Logs
+
+Both `ralph-loop` and `task-agent` append log lines to `.ralph/ralph.log` by default.
+These are plain text with timestamps and levels, so they work well with `lnav`.
+
+```bash
+lnav .ralph/ralph.log
 ```
 
 ## Tests

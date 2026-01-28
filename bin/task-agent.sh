@@ -31,6 +31,7 @@ STASH_REF=""
 STASH_MSG=""
 RESET_TASK=false
 MAX_RUN_ATTEMPTS=3
+LOG_FILE="${RALPH_LOG_FILE:-.ralph/ralph.log}"
 
 usage() {
   cat <<'USAGE'
@@ -44,6 +45,7 @@ Options:
   --assignee   Name to store for observability
   --workspace  Repo directory to run in (default: current)
   --prompt     Prompt file to send to the LLM (default: ~/.prompts/autonomous-senior-engineer.prompt.md)
+  --log-file   Append logs to this file (default: .ralph/ralph.log)
   --reset-task Reset attempt counter/status for the selected task before running
 USAGE
 }
@@ -56,6 +58,7 @@ while [[ $# -gt 0 ]]; do
     --assignee) ASSIGNEE="$2"; shift 2 ;;
     --workspace) WORKSPACE="$2"; shift 2 ;;
     --prompt) PROMPT_FILE="$2"; shift 2 ;;
+    --log-file) LOG_FILE="$2"; shift 2 ;;
     --reset-task) RESET_TASK=true; shift 1 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown arg: $1" >&2; usage; exit 2 ;;
@@ -91,6 +94,7 @@ resolve_path() {
 
 TASKS_FILE="$(resolve_path "$TASKS_FILE" "$WORKSPACE")"
 PROMPT_FILE="$(resolve_path "$PROMPT_FILE" "$WORKSPACE")"
+LOG_FILE="$(resolve_path "$LOG_FILE" "$WORKSPACE")"
 
 if [[ ! -f "$PROMPT_FILE" ]]; then
   echo "Prompt file not found: $PROMPT_FILE" >&2
@@ -118,6 +122,19 @@ if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   echo "Not a git repository: $WORKSPACE" >&2
   exit 2
 fi
+
+log_line() {
+  local level="$1"
+  shift
+  local msg="$1"
+  shift || true
+  local kv="$*"
+  msg="${msg//$'\n'/ }"
+  if [[ -n "$LOG_FILE" ]]; then
+    mkdir -p "$(dirname "$LOG_FILE")"
+    printf '%s %s %s %s%s\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" "$level" "task-agent" "$msg" "${kv:+ $kv}" >>"$LOG_FILE"
+  fi
+}
 
 root_selector='(if type=="object" and has("tasks") then .tasks else . end)'
 
@@ -532,6 +549,7 @@ finalize_successful_task() {
 handle_interrupt() {
   trap - INT TERM
   local note="Run $RUN_ID interrupted on attempt ${RUN_ATTEMPT:-?}"
+  log_line "WARN" "Run interrupted" "task_id=${TASK_ID}" "run_id=${RUN_ID}" "attempt=${RUN_ATTEMPT:-?}"
   update_task_status "started" "$note"
   git_commit_progress "ralph(${TASK_ID}): run ${RUN_ID} interrupted"
   exit 130
@@ -585,6 +603,8 @@ case "$MODEL" in
     ;;
 esac
 
+log_line "INFO" "Task selected" "task_id=${TASK_ID}" "model=${MODEL}" "status=${STATUS}"
+
 capture_repo_state
 stash_local_changes
 trap cleanup EXIT
@@ -592,6 +612,8 @@ trap cleanup EXIT
 RUN_ID="$(date -u +"%Y%m%dT%H%M%SZ")-$$"
 TASK_BRANCH="ralph/${TASK_ID}"
 checkout_task_branch
+
+log_line "INFO" "Run started" "task_id=${TASK_ID}" "run_id=${RUN_ID}" "branch=${TASK_BRANCH}"
 
 if [[ "$RESET_TASK" == true ]]; then
   reset_task_attempts "Reset attempts via --reset-task"
@@ -601,6 +623,7 @@ current_attempts="$(current_attempt_count)"
 if [[ "$current_attempts" -ge "$MAX_RUN_ATTEMPTS" ]]; then
   update_task_status "blocked" "Attempt limit reached (${current_attempts}/${MAX_RUN_ATTEMPTS}). Use --reset-task after human intervention."
   git_commit_progress "ralph(${TASK_ID}): run ${RUN_ID} blocked (attempt limit)"
+  log_line "WARN" "Attempt limit reached" "task_id=${TASK_ID}" "run_id=${RUN_ID}" "attempts=${current_attempts}"
   echo "Blocked: ${TASK_ID} reached attempt limit (${current_attempts}/${MAX_RUN_ATTEMPTS})." >&2
   exit 11
 fi
@@ -666,6 +689,7 @@ CODEX_EXIT=1
 rate_limit_retry=false
 for attempt in 1 2 3; do
   rate_limit_retry=false
+  log_line "INFO" "Codex exec start" "task_id=${TASK_ID}" "run_id=${RUN_ID}" "attempt=${attempt}" "model=${MODEL}"
   if [[ -n "${CODEX_API_KEY:-}" ]]; then
     env CODEX_API_KEY="${CODEX_API_KEY}" codex exec \
       --yolo \
@@ -686,6 +710,7 @@ for attempt in 1 2 3; do
       - <"$PROMPT_PATH" >"$CODEX_LOG" 2>&1
   fi
   CODEX_EXIT=$?
+  log_line "INFO" "Codex exec end" "task_id=${TASK_ID}" "run_id=${RUN_ID}" "attempt=${attempt}" "exit=${CODEX_EXIT}"
   if [[ -s "$RESULT_PATH" ]]; then
     break
   fi
@@ -714,10 +739,101 @@ else
   TOKENS_USED="$EST_TOKENS" record_rate_usage "$EST_TOKENS"
 fi
 
+if [[ -s "$CODEX_LOG" ]]; then
+  CODEX_LOG="$CODEX_LOG" LOG_FILE="$LOG_FILE" TASK_ID="$TASK_ID" RUN_ID="$RUN_ID" python - <<'PY'
+import json
+import os
+from datetime import datetime, timezone
+
+log_path = os.environ.get("CODEX_LOG")
+log_file = os.environ.get("LOG_FILE")
+task_id = os.environ.get("TASK_ID", "")
+run_id = os.environ.get("RUN_ID", "")
+
+if not log_path or not log_file:
+    raise SystemExit
+
+def iso_ts(value):
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        ts = float(value)
+        if ts > 1e12:
+            ts = ts / 1000.0
+        return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    if isinstance(value, str):
+        return value
+    return None
+
+def pick_ts(entry):
+    for key in ("ts", "timestamp", "time", "created_at", "created"):
+        if key in entry:
+            value = iso_ts(entry.get(key))
+            if value:
+                return value
+    return datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+def extract_message(entry):
+    msg = entry.get("message")
+    if isinstance(msg, str):
+        return msg
+    if isinstance(msg, dict):
+        for key in ("content", "text", "message"):
+            value = msg.get(key)
+            if isinstance(value, str):
+                return value
+            if isinstance(value, list):
+                parts = []
+                for item in value:
+                    if isinstance(item, dict):
+                        text = item.get("text") or item.get("content")
+                        if isinstance(text, str):
+                            parts.append(text)
+                    elif isinstance(item, str):
+                        parts.append(item)
+                if parts:
+                    return " ".join(parts)
+    if isinstance(msg, list):
+        return " ".join([m for m in msg if isinstance(m, str)])
+    return None
+
+def compact(value, limit=400):
+    if value is None:
+        return ""
+    value = value.replace("\n", " ").replace("\r", " ").strip()
+    if len(value) > limit:
+        return value[:limit] + "..."
+    return value
+
+with open(log_path, "r") as fh, open(log_file, "a") as out:
+    for line in fh:
+        line = line.strip()
+        if not line or not line.startswith("{"):
+            continue
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        level = "INFO"
+        if entry.get("level") == "error" or entry.get("type") == "error" or entry.get("error"):
+            level = "ERROR"
+        event_type = entry.get("type") or entry.get("event") or entry.get("level") or "event"
+        detail = extract_message(entry) or entry.get("detail") or entry.get("error") or ""
+        detail = compact(str(detail)) if detail else ""
+        ts = pick_ts(entry)
+        suffix = f" task_id={task_id} run_id={run_id}"
+        if detail:
+            out.write(f"{ts} {level} codex {event_type} {detail}{suffix}\n")
+        else:
+            out.write(f"{ts} {level} codex {event_type}{suffix}\n")
+PY
+fi
+
 # If Codex did not produce a final message, mark blocked and exit
 if [[ ! -s "$RESULT_PATH" ]]; then
   update_task_status "blocked" "Codex produced no result.json (exit=$CODEX_EXIT). See ${CODEX_LOG}"
   git_commit_progress "ralph(${TASK_ID}): run ${RUN_ID} blocked (no result)"
+  log_line "ERROR" "Missing result.json" "task_id=${TASK_ID}" "run_id=${RUN_ID}" "exit=${CODEX_EXIT}"
   echo "Blocked: missing result.json. See ${CODEX_LOG}" >&2
   exit 10
 fi
@@ -744,6 +860,7 @@ if [[ "$OUTCOME" == "completed" && "$DOD_MET" == "true" && "$VERIFY_OK" == "true
   update_task_status "completed" "Run $RUN_ID completed"
   git_commit_progress "ralph(${TASK_ID}): run ${RUN_ID} completed"
   finalize_successful_task
+  log_line "INFO" "Run completed" "task_id=${TASK_ID}" "run_id=${RUN_ID}" "verify_ok=${VERIFY_OK}"
   echo "COMPLETED ${TASK_ID} (model=${MODEL}, run=${RUN_ID})"
   exit 0
 fi
@@ -751,6 +868,7 @@ fi
 if [[ "$OUTCOME" == "blocked" ]]; then
   update_task_status "blocked" "Run $RUN_ID blocked. See ${RESULT_PATH}"
   git_commit_progress "ralph(${TASK_ID}): run ${RUN_ID} blocked"
+  log_line "WARN" "Run blocked" "task_id=${TASK_ID}" "run_id=${RUN_ID}"
   echo "BLOCKED ${TASK_ID} (model=${MODEL}, run=${RUN_ID})" >&2
   exit 11
 fi
@@ -759,5 +877,6 @@ fi
 note="Run $RUN_ID progress. outcome=${OUTCOME} dod_met=${DOD_MET} verify_ok=${VERIFY_OK}. See ${RESULT_PATH}"
 update_task_status "started" "$note"
 git_commit_progress "ralph(${TASK_ID}): run ${RUN_ID} progress"
+log_line "INFO" "Run started/progress" "task_id=${TASK_ID}" "run_id=${RUN_ID}" "outcome=${OUTCOME}" "dod_met=${DOD_MET}" "verify_ok=${VERIFY_OK}"
 echo "STARTED ${TASK_ID} (model=${MODEL}, run=${RUN_ID})" >&2
 exit 12
