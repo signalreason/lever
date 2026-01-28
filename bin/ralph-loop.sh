@@ -12,26 +12,34 @@ info() {
 }
 
 TRAIT_NAME="Ralph Wiggum"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-cd "$REPO_ROOT" || die "Unable to reach repo root from $SCRIPT_DIR"
-
-TASKS_FILE="${TASKS_FILE:-$REPO_ROOT/prd.json}"
-PROMPT_FILE="${PROMPT_FILE:-$REPO_ROOT/prompts/autonomous-senior-engineer.prompt.md}"
+WORKSPACE="${WORKSPACE:-$PWD}"
+TASKS_FILE="${TASKS_FILE:-prd.json}"
+PROMPT_FILE="${PROMPT_FILE:-prompts/autonomous-senior-engineer.prompt.md}"
 ASSIGNEE="${ASSIGNEE:-ralph-loop}"
-TASK_AGENT_BIN="${TASK_AGENT_BIN:-$REPO_ROOT/bin/task-agent.sh}"
+TASK_AGENT_BIN="${TASK_AGENT_BIN:-task-agent}"
 DELAY_SECONDS=0
+
+resolve_path() {
+  local input="$1"
+  local base="$2"
+  if [[ "$input" == /* ]]; then
+    printf '%s\n' "$input"
+  else
+    printf '%s\n' "$base/$input"
+  fi
+}
 
 usage() {
   cat <<'USAGE'
-Usage: bin/ralph-loop.sh [options]
+Usage: ralph-loop [options]
 
 Options:
   --tasks PATH        Tasks file (default: prd.json)
-  --prompt PATH       Prompt file sent to bin/task-agent.sh (required)
+  --prompt PATH       Prompt file sent to task-agent (required)
   --assignee NAME     Assignee metadata (default: ralph-loop)
-  --task-agent PATH   Path to task-agent driver (default: bin/task-agent.sh)
+  --task-agent PATH   Path to task-agent driver (default: task-agent on PATH)
   --delay SECONDS     Pause between iterations (default: 0)
+  --workspace PATH    Workspace directory (default: current directory)
   -h, --help          Show this help message
 USAGE
 }
@@ -43,10 +51,19 @@ while [[ $# -gt 0 ]]; do
     --assignee) ASSIGNEE="$2"; shift 2 ;;
     --task-agent) TASK_AGENT_BIN="$2"; shift 2 ;;
     --delay) DELAY_SECONDS="$2"; shift 2 ;;
+    --workspace) WORKSPACE="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) die "Unknown option $1";;
   esac
 done
+
+if [[ ! -d "$WORKSPACE" ]]; then
+  die "Workspace not found: $WORKSPACE"
+fi
+
+WORKSPACE="$(cd "$WORKSPACE" && pwd)"
+TASKS_FILE="$(resolve_path "$TASKS_FILE" "$WORKSPACE")"
+PROMPT_FILE="$(resolve_path "$PROMPT_FILE" "$WORKSPACE")"
 
 if [[ ! -f "$TASKS_FILE" ]]; then
   die "Tasks file not found: $TASKS_FILE"
@@ -56,8 +73,17 @@ if [[ ! -f "$PROMPT_FILE" ]]; then
   die "Prompt file not found: $PROMPT_FILE"
 fi
 
-if [[ ! -x "$TASK_AGENT_BIN" ]]; then
-  die "Task agent driver is not executable: $TASK_AGENT_BIN"
+if [[ "$TASK_AGENT_BIN" == */* ]]; then
+  TASK_AGENT_BIN="$(resolve_path "$TASK_AGENT_BIN" "$WORKSPACE")"
+  if [[ ! -x "$TASK_AGENT_BIN" ]]; then
+    die "Task agent driver is not executable: $TASK_AGENT_BIN"
+  fi
+else
+  TASK_AGENT_CMD="$TASK_AGENT_BIN"
+  TASK_AGENT_BIN="$(command -v "$TASK_AGENT_CMD" || true)"
+  if [[ -z "$TASK_AGENT_BIN" ]]; then
+    die "Task agent driver not found on PATH: $TASK_AGENT_CMD"
+  fi
 fi
 
 if ! command -v jq >/dev/null 2>&1; then
@@ -106,7 +132,7 @@ while true; do
   info "Cycle $cycle: running ${task_id} (status=${task_status})"
 
   set +e
-  "$TASK_AGENT_BIN" --tasks "$TASKS_FILE" --task-id "$task_id" --assignee "$ASSIGNEE" --prompt "$PROMPT_FILE"
+  "$TASK_AGENT_BIN" --tasks "$TASKS_FILE" --task-id "$task_id" --assignee "$ASSIGNEE" --prompt "$PROMPT_FILE" --workspace "$WORKSPACE"
   exit_code=$?
   set -e
 

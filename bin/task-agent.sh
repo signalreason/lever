@@ -15,7 +15,7 @@ set -euo pipefail
 TASKS_FILE=""
 TASK_ID=""
 ASSIGNEE="${ASSIGNEE:-task-agent}"
-WORKSPACE="${PWD}"
+WORKSPACE="${WORKSPACE:-$PWD}"
 NEXT=false
 PROMPT_FILE=""
 BASE_BRANCH="${BASE_BRANCH:-main}"
@@ -76,6 +76,26 @@ if [[ -z "$PROMPT_FILE" ]]; then
   echo "--prompt is required" >&2
   exit 2
 fi
+
+if [[ ! -d "$WORKSPACE" ]]; then
+  echo "Workspace not found: $WORKSPACE" >&2
+  exit 2
+fi
+
+WORKSPACE="$(cd "$WORKSPACE" && pwd)"
+
+resolve_path() {
+  local input="$1"
+  local base="$2"
+  if [[ "$input" == /* ]]; then
+    printf '%s\n' "$input"
+  else
+    printf '%s\n' "$base/$input"
+  fi
+}
+
+TASKS_FILE="$(resolve_path "$TASKS_FILE" "$WORKSPACE")"
+PROMPT_FILE="$(resolve_path "$PROMPT_FILE" "$WORKSPACE")"
 
 if [[ ! -f "$PROMPT_FILE" ]]; then
   echo "Prompt file not found: $PROMPT_FILE" >&2
