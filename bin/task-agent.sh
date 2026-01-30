@@ -873,6 +873,20 @@ fi
 OUTCOME="$(jq -r '.outcome' "$RESULT_PATH")"
 DOD_MET="$(jq -r '.dod_met' "$RESULT_PATH")"
 
+has_python_tests() {
+  if [[ -f "pytest.ini" || -f "pyproject.toml" || -f "setup.cfg" || -f "tox.ini" ]]; then
+    return 0
+  fi
+  if [[ -d "tests" ]]; then
+    if command -v rg >/dev/null 2>&1; then
+      rg --files -g '*.py' tests >/dev/null 2>&1 && return 0
+    else
+      find tests -type f -name '*.py' -print -quit | grep -q .
+    fi
+  fi
+  return 1
+}
+
 # Optional: lightweight verification pass if repo has a standard script
 VERIFY_OK=true
 VERIFY_LOG="${RUN_DIR}/verify.log"
@@ -883,7 +897,9 @@ if [[ "$OUTCOME" == "completed" && "$DOD_MET" == "true" ]]; then
     ./scripts/ci.sh >"$VERIFY_LOG" 2>&1 || VERIFY_OK=false
   elif [[ -f "Makefile" ]] && grep -qE '^[[:space:]]*ci:' Makefile; then
     make ci >"$VERIFY_LOG" 2>&1 || VERIFY_OK=false
-  elif [[ -d "tests" ]] && command -v pytest >/dev/null 2>&1; then
+  elif [[ -x "./tests/run.sh" ]]; then
+    ./tests/run.sh >"$VERIFY_LOG" 2>&1 || VERIFY_OK=false
+  elif command -v pytest >/dev/null 2>&1 && has_python_tests; then
     pytest -q >"$VERIFY_LOG" 2>&1 || VERIFY_OK=false
   fi
 fi
