@@ -154,12 +154,3 @@ for commit messages, and follow this commit message spec:
   }
 }
 ```
-
-### ralph.log needs to include agent logs
-right now, to monitor an in-progress task, i have to find the run dir and tail
-the codex log, which is much easier to write than to do. when the current task
-completes, i have to do it all again.
-
-instead, i want to see both loop output and individual agent output in
-ralph.log. ralph.log should be in a typical format that works well with tools
-like `lnav`.
