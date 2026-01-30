@@ -84,3 +84,80 @@ lnav .ralph/ralph.log
 ```bash
 ./tests/run.sh
 ```
+
+## TODO
+### add more detail to the prd schema
+the schema should cover tasks that look more like this:
+```
+    {
+      "task_id": "ASM-001",
+      "title": "Define pack/manifest.json schema in INTERFACE.md",
+      "model": "gpt-5.1-codex",
+      "status": "completed",
+      "assignee": "ralph-loop",
+      "definition_of_done": [
+        "INTERFACE.md exists in repo root.",
+        "Manifest section lists required fields with types and constraints.",
+        "repo_commit fallback of \"unknown\" and created_at RFC3339 are documented.",
+        "Minimal manifest example JSON included."
+      ],
+      "recommended": {
+        "approach": "Keep schema descriptions precise and machine-oriented; prefer tables or bullet lists."
+      },
+      "observability": {
+        "run_attempts": 1,
+        "last_note": "Run 20260127T224200Z-65016 completed"
+      }
+    }
+```
+each task should have:
+- task_id
+- title
+- model
+- status
+- definition_of_done
+- recommended_approach
+- observability
+    - run_attempts
+    - last_note
+    - last_update_utc
+    - last_run_id
+
+specifics:
+- add `last_update_utc` and `last_run_id` properties to `observability` task property
+- remove the `assignee` task property
+- add `title`, `definition_of_done`, and `recommended` properties to `task` and make them required
+
+### use quality commit messages
+the current commit messages are only useful for debugging. use the task title
+for commit messages, and follow this commit message spec:
+
+```
+{
+  "id": "cbea.git-commit.compact.v1",
+  "message_format": "<subject>\n\n<body?>",
+  "subject": {
+    "single_line": true,
+    "max_chars": 50,
+    "capitalize_first_char": true,
+    "no_trailing_period": true,
+    "mood": "imperative",
+    "imperative_test_prefix": "If applied, this commit will "
+  },
+  "body": {
+    "present_requires_blank_line_after_subject": true,
+    "wrap_hard_at": 72,
+    "focus": ["what", "why"],
+    "deprioritize": ["how"]
+  }
+}
+```
+
+### ralph.log needs to include agent logs
+right now, to monitor an in-progress task, i have to find the run dir and tail
+the codex log, which is much easier to write than to do. when the current task
+completes, i have to do it all again.
+
+instead, i want to see both loop output and individual agent output in
+ralph.log. ralph.log should be in a typical format that works well with tools
+like `lnav`.
