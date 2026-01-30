@@ -1,0 +1,125 @@
+{
+  "tasks": [
+    {
+      "task_id": "SCHEMA-001",
+      "title": "Inventory current schema usage",
+      "model": "gpt-5.1-codex-mini",
+      "status": "unstarted",
+      "definition_of_done": [
+        "Reviewed prd.schema.json for current task fields and requirements.",
+        "Checked README.md for schema guidance and examples.",
+        "Located tests or scripts that read or validate task fields."
+      ],
+      "recommended": {
+        "approach": "Use rg to find task field usage in bin/ and tests/."
+      },
+      "observability": {
+        "run_attempts": 0,
+        "last_note": ""
+      }
+    },
+    {
+      "task_id": "SCHEMA-002",
+      "title": "Specify updated task schema details",
+      "model": "gpt-5.1-codex-mini",
+      "status": "unstarted",
+      "definition_of_done": [
+        "Drafted the updated task fields and required list from README TODO.",
+        "Documented observability fields and their types/constraints."
+      ],
+      "recommended": {
+        "approach": "Translate README TODO into explicit JSON Schema requirements."
+      },
+      "observability": {
+        "run_attempts": 0,
+        "last_note": ""
+      }
+    },
+    {
+      "task_id": "SCHEMA-003",
+      "title": "Update prd.schema.json for new task fields",
+      "model": "gpt-5.1-codex-mini",
+      "status": "unstarted",
+      "definition_of_done": [
+        "Added title, definition_of_done, and recommended as required fields.",
+        "Removed assignee from task properties.",
+        "Added observability.last_update_utc and observability.last_run_id."
+      ],
+      "recommended": {
+        "approach": "Keep task additionalProperties aligned with intended strictness."
+      },
+      "observability": {
+        "run_attempts": 0,
+        "last_note": ""
+      }
+    },
+    {
+      "task_id": "SCHEMA-004",
+      "title": "Update README schema guidance and example",
+      "model": "gpt-5.1-codex-mini",
+      "status": "unstarted",
+      "definition_of_done": [
+        "README TODO example reflects the updated task schema.",
+        "Field descriptions and required list match prd.schema.json."
+      ],
+      "recommended": {
+        "approach": "Keep example minimal but complete and valid."
+      },
+      "observability": {
+        "run_attempts": 0,
+        "last_note": ""
+      }
+    },
+    {
+      "task_id": "SCHEMA-005",
+      "title": "Update scripts for schema changes",
+      "model": "gpt-5.1-codex-mini",
+      "status": "unstarted",
+      "definition_of_done": [
+        "bin/task-agent.sh handles required fields without relying on assignee.",
+        "bin/ralph-loop.sh continues to pass assignee only where needed."
+      ],
+      "recommended": {
+        "approach": "Search for assignee usage and adjust to new schema."
+      },
+      "observability": {
+        "run_attempts": 0,
+        "last_note": ""
+      }
+    },
+    {
+      "task_id": "SCHEMA-006",
+      "title": "Update tests to validate new schema",
+      "model": "gpt-5.1-codex-mini",
+      "status": "unstarted",
+      "definition_of_done": [
+        "Test fixtures include newly required fields.",
+        "Schema validation (if present) passes with updated requirements."
+      ],
+      "recommended": {
+        "approach": "Adjust tests/test-*.sh fixtures to match updated schema."
+      },
+      "observability": {
+        "run_attempts": 0,
+        "last_note": ""
+      }
+    },
+    {
+      "task_id": "SCHEMA-007",
+      "title": "Verify schema changes and run tests",
+      "model": "gpt-5.1-codex-mini",
+      "status": "unstarted",
+      "definition_of_done": [
+        "prd.json validates against prd.schema.json.",
+        "./tests/run.sh passes."
+      ],
+      "recommended": {
+        "approach": "Validate with a JSON Schema checker before running tests."
+      },
+      "observability": {
+        "run_attempts": 0,
+        "last_note": ""
+      }
+    }
+  ]
+}
