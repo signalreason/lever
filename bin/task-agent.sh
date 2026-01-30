@@ -31,7 +31,7 @@ STASH_REF=""
 STASH_MSG=""
 RESET_TASK=false
 MAX_RUN_ATTEMPTS=3
-LOG_FILE="${RALPH_LOG_FILE:-.ralph/ralph.log}"
+CODEX_STREAM_PID=""
 
 usage() {
   cat <<'USAGE'
@@ -45,7 +45,6 @@ Options:
   --assignee   Name to store for observability
   --workspace  Repo directory to run in (default: current)
   --prompt     Prompt file to send to the LLM (default: ~/.prompts/autonomous-senior-engineer.prompt.md)
-  --log-file   Append logs to this file (default: .ralph/ralph.log)
   --reset-task Reset attempt counter/status for the selected task before running
 USAGE
 }
@@ -58,7 +57,6 @@ while [[ $# -gt 0 ]]; do
     --assignee) ASSIGNEE="$2"; shift 2 ;;
     --workspace) WORKSPACE="$2"; shift 2 ;;
     --prompt) PROMPT_FILE="$2"; shift 2 ;;
-    --log-file) LOG_FILE="$2"; shift 2 ;;
     --reset-task) RESET_TASK=true; shift 1 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown arg: $1" >&2; usage; exit 2 ;;
@@ -94,7 +92,6 @@ resolve_path() {
 
 TASKS_FILE="$(resolve_path "$TASKS_FILE" "$WORKSPACE")"
 PROMPT_FILE="$(resolve_path "$PROMPT_FILE" "$WORKSPACE")"
-LOG_FILE="$(resolve_path "$LOG_FILE" "$WORKSPACE")"
 
 if [[ ! -f "$PROMPT_FILE" ]]; then
   echo "Prompt file not found: $PROMPT_FILE" >&2
@@ -130,9 +127,12 @@ log_line() {
   shift || true
   local kv="$*"
   msg="${msg//$'\n'/ }"
-  if [[ -n "$LOG_FILE" ]]; then
-    mkdir -p "$(dirname "$LOG_FILE")"
-    printf '%s %s %s %s%s\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" "$level" "task-agent" "$msg" "${kv:+ $kv}" >>"$LOG_FILE"
+  local line
+  line="$(printf '%s %s %s %s%s' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" "$level" "task-agent" "$msg" "${kv:+ $kv}")"
+  if [[ "$level" == "ERROR" || "$level" == "WARN" ]]; then
+    printf '%s\n' "$line" >&2
+  else
+    printf '%s\n' "$line"
   fi
 }
 
@@ -233,6 +233,7 @@ restore_local_changes() {
 }
 
 cleanup() {
+  stop_codex_log_stream
   restore_local_changes
   if [[ -n "$DIRTY_FILES_FILE" ]]; then
     rm -f "$DIRTY_FILES_FILE"
@@ -424,6 +425,125 @@ with open(log_path, "r") as fh:
                 raise SystemExit
 print("")
 PY
+}
+
+start_codex_log_stream() {
+  if [[ -z "${CODEX_LOG:-}" ]]; then
+    return
+  fi
+  : >"$CODEX_LOG"
+  TASK_ID="$TASK_ID" RUN_ID="$RUN_ID" CODEX_LOG="$CODEX_LOG" python -u - <<'PY' &
+import json
+import os
+import sys
+import time
+from datetime import datetime, timezone
+
+log_path = os.environ.get("CODEX_LOG")
+task_id = os.environ.get("TASK_ID", "")
+run_id = os.environ.get("RUN_ID", "")
+
+def iso_ts(value):
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        ts = float(value)
+        if ts > 1e12:
+            ts = ts / 1000.0
+        return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    if isinstance(value, str):
+        return value
+    return None
+
+def pick_ts(entry):
+    for key in ("ts", "timestamp", "time", "created_at", "created"):
+        if key in entry:
+            value = iso_ts(entry.get(key))
+            if value:
+                return value
+    return datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+def extract_message(entry):
+    msg = entry.get("message")
+    if isinstance(msg, str):
+        return msg
+    if isinstance(msg, dict):
+        for key in ("content", "text", "message"):
+            value = msg.get(key)
+            if isinstance(value, str):
+                return value
+            if isinstance(value, list):
+                parts = []
+                for item in value:
+                    if isinstance(item, dict):
+                        text = item.get("text") or item.get("content")
+                        if isinstance(text, str):
+                            parts.append(text)
+                    elif isinstance(item, str):
+                        parts.append(item)
+                if parts:
+                    return " ".join(parts)
+    if isinstance(msg, list):
+        return " ".join([m for m in msg if isinstance(m, str)])
+    return None
+
+def compact(value, limit=400):
+    if value is None:
+        return ""
+    value = value.replace("\n", " ").replace("\r", " ").strip()
+    if len(value) > limit:
+        return value[:limit] + "..."
+    return value
+
+if not log_path:
+    raise SystemExit
+
+with open(log_path, "r") as fh:
+    while True:
+        try:
+            size = os.path.getsize(log_path)
+        except OSError:
+            size = None
+        if size is not None and fh.tell() > size:
+            fh.seek(0)
+        line = fh.readline()
+        if not line:
+            time.sleep(0.1)
+            continue
+        line = line.strip()
+        if not line:
+            continue
+        if line.startswith("{"):
+            try:
+                entry = json.loads(line)
+            except json.JSONDecodeError:
+                entry = None
+            if entry is not None:
+                level = "INFO"
+                if entry.get("level") == "error" or entry.get("type") == "error" or entry.get("error"):
+                    level = "ERROR"
+                event_type = entry.get("type") or entry.get("event") or entry.get("level") or "event"
+                detail = extract_message(entry) or entry.get("detail") or entry.get("error") or ""
+                detail = compact(str(detail)) if detail else ""
+                ts = pick_ts(entry)
+                suffix = f" task_id={task_id} run_id={run_id}"
+                if detail:
+                    print(f"{ts} {level} codex {event_type} {detail}{suffix}", flush=True)
+                else:
+                    print(f"{ts} {level} codex {event_type}{suffix}", flush=True)
+                continue
+        ts = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        raw = compact(line)
+        print(f"{ts} INFO codex raw {raw} task_id={task_id} run_id={run_id}", flush=True)
+PY
+  CODEX_STREAM_PID=$!
+}
+
+stop_codex_log_stream() {
+  if [[ -n "${CODEX_STREAM_PID:-}" ]]; then
+    kill "$CODEX_STREAM_PID" >/dev/null 2>&1 || true
+    wait "$CODEX_STREAM_PID" >/dev/null 2>&1 || true
+  fi
 }
 
 increment_attempt_count() {
@@ -684,6 +804,7 @@ EST_TOKENS="$(estimate_prompt_tokens "$PROMPT_PATH")"
 # Run Codex non-interactively.
 # Note: global flags should come after the subcommand.
 set +e
+start_codex_log_stream
 rate_limit_sleep "$EST_TOKENS"
 CODEX_EXIT=1
 rate_limit_retry=false
@@ -731,102 +852,13 @@ PY
   fi
 done
 set -e
+stop_codex_log_stream
 
 TOKENS_USED="$(parse_usage_tokens)"
 if [[ -n "$TOKENS_USED" ]]; then
   TOKENS_USED="$TOKENS_USED" record_rate_usage "$TOKENS_USED"
 else
   TOKENS_USED="$EST_TOKENS" record_rate_usage "$EST_TOKENS"
-fi
-
-if [[ -s "$CODEX_LOG" ]]; then
-  CODEX_LOG="$CODEX_LOG" LOG_FILE="$LOG_FILE" TASK_ID="$TASK_ID" RUN_ID="$RUN_ID" python - <<'PY'
-import json
-import os
-from datetime import datetime, timezone
-
-log_path = os.environ.get("CODEX_LOG")
-log_file = os.environ.get("LOG_FILE")
-task_id = os.environ.get("TASK_ID", "")
-run_id = os.environ.get("RUN_ID", "")
-
-if not log_path or not log_file:
-    raise SystemExit
-
-def iso_ts(value):
-    if value is None:
-        return None
-    if isinstance(value, (int, float)):
-        ts = float(value)
-        if ts > 1e12:
-            ts = ts / 1000.0
-        return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    if isinstance(value, str):
-        return value
-    return None
-
-def pick_ts(entry):
-    for key in ("ts", "timestamp", "time", "created_at", "created"):
-        if key in entry:
-            value = iso_ts(entry.get(key))
-            if value:
-                return value
-    return datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-def extract_message(entry):
-    msg = entry.get("message")
-    if isinstance(msg, str):
-        return msg
-    if isinstance(msg, dict):
-        for key in ("content", "text", "message"):
-            value = msg.get(key)
-            if isinstance(value, str):
-                return value
-            if isinstance(value, list):
-                parts = []
-                for item in value:
-                    if isinstance(item, dict):
-                        text = item.get("text") or item.get("content")
-                        if isinstance(text, str):
-                            parts.append(text)
-                    elif isinstance(item, str):
-                        parts.append(item)
-                if parts:
-                    return " ".join(parts)
-    if isinstance(msg, list):
-        return " ".join([m for m in msg if isinstance(m, str)])
-    return None
-
-def compact(value, limit=400):
-    if value is None:
-        return ""
-    value = value.replace("\n", " ").replace("\r", " ").strip()
-    if len(value) > limit:
-        return value[:limit] + "..."
-    return value
-
-with open(log_path, "r") as fh, open(log_file, "a") as out:
-    for line in fh:
-        line = line.strip()
-        if not line or not line.startswith("{"):
-            continue
-        try:
-            entry = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        level = "INFO"
-        if entry.get("level") == "error" or entry.get("type") == "error" or entry.get("error"):
-            level = "ERROR"
-        event_type = entry.get("type") or entry.get("event") or entry.get("level") or "event"
-        detail = extract_message(entry) or entry.get("detail") or entry.get("error") or ""
-        detail = compact(str(detail)) if detail else ""
-        ts = pick_ts(entry)
-        suffix = f" task_id={task_id} run_id={run_id}"
-        if detail:
-            out.write(f"{ts} {level} codex {event_type} {detail}{suffix}\n")
-        else:
-            out.write(f"{ts} {level} codex {event_type}{suffix}\n")
-PY
 fi
 
 # If Codex did not produce a final message, mark blocked and exit

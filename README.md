@@ -67,16 +67,18 @@ task-agent \
   --assignee ralph-loop
 ```
 
-Common task-agent options:
-- `--log-file <path>`: append logs to this file (default: `.ralph/ralph.log`).
-
 ## Logs
 
-Both `ralph-loop` and `task-agent` append log lines to `.ralph/ralph.log` by default.
-These are plain text with timestamps and levels, so they work well with `lnav`.
+If you want a single stream you can tail with `lnav`, pipe stdout+stderr:
 
 ```bash
-lnav .ralph/ralph.log
+ralph-loop --tasks prd.json 2>&1 | lnav -
+```
+
+To keep a copy while watching:
+
+```bash
+ralph-loop --tasks prd.json 2>&1 | tee .ralph/ralph.log | lnav -
 ```
 
 ## Tests
