@@ -4,7 +4,7 @@
       "task_id": "SCHEMA-001",
       "title": "Inventory current schema usage",
       "model": "gpt-5.1-codex-mini",
-      "status": "unstarted",
+      "status": "completed",
       "definition_of_done": [
         "Reviewed prd.schema.json for current task fields and requirements.",
         "Checked README.md for schema guidance and examples.",
@@ -14,9 +14,12 @@
         "approach": "Use rg to find task field usage in bin/ and tests/."
       },
       "observability": {
-        "run_attempts": 0,
-        "last_note": ""
-      }
+        "run_attempts": 1,
+        "last_note": "Run 20260130T194742Z-8533 completed",
+        "last_run_id": "20260130T194742Z-8533",
+        "last_update_utc": "2026-01-30T19:50:29Z"
+      },
+      "assignee": "task-agent"
     },
     {
       "task_id": "SCHEMA-002",
