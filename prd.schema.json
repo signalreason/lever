@@ -14,7 +14,7 @@
   "$defs": {
     "task": {
       "type": "object",
-      "required": ["task_id", "status", "model"],
+      "required": ["task_id", "status", "model", "title", "definition_of_done", "recommended"],
       "properties": {
         "task_id": { "type": "string", "minLength": 1 },
         "status": {
@@ -25,13 +25,29 @@
           "type": "string",
           "enum": ["gpt-5.1-codex-mini", "gpt-5.1-codex", "gpt-5.2-codex", "human"]
         },
-        "assignee": { "type": "string" },
         "observability": {
           "type": "object",
           "additionalProperties": false,
+          "required": ["run_attempts", "last_note", "last_update_utc", "last_run_id"],
           "properties": {
             "run_attempts": { "type": "integer", "minimum": 0 },
-            "last_note": { "type": "string" }
+            "last_note": { "type": "string" },
+            "last_update_utc": { "type": "string", "format": "date-time" },
+            "last_run_id": { "type": "string", "minLength": 1 }
+          }
+        },
+        "title": { "type": "string", "minLength": 1 },
+        "definition_of_done": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "recommended": {
+          "type": "object",
+          "required": ["approach"],
+          "additionalProperties": false,
+          "properties": {
+            "approach": { "type": "string", "minLength": 1 }
           }
         }
       },

@@ -87,16 +87,16 @@ ralph-loop --tasks prd.json 2>&1 | tee .ralph/ralph.log | lnav -
 ./tests/run.sh
 ```
 
-## TODO
-### add more detail to the prd schema
-the schema should cover tasks that look more like this:
+## Task schema guidance
+
+Tasks must look similar to the example below and include the mandatory metadata the schema enforces:
+
 ```
     {
       "task_id": "ASM-001",
       "title": "Define pack/manifest.json schema in INTERFACE.md",
       "model": "gpt-5.1-codex",
       "status": "completed",
-      "assignee": "ralph-loop",
       "definition_of_done": [
         "INTERFACE.md exists in repo root.",
         "Manifest section lists required fields with types and constraints.",
@@ -108,27 +108,22 @@ the schema should cover tasks that look more like this:
       },
       "observability": {
         "run_attempts": 1,
-        "last_note": "Run 20260127T224200Z-65016 completed"
+        "last_note": "Run 20260127T224200Z-65016 completed",
+        "last_update_utc": "2026-01-27T22:42:00Z",
+        "last_run_id": "65016"
       }
     }
 ```
-each task should have:
-- task_id
-- title
-- model
-- status
-- definition_of_done
-- recommended_approach
-- observability
-    - run_attempts
-    - last_note
-    - last_update_utc
-    - last_run_id
 
-specifics:
-- add `last_update_utc` and `last_run_id` properties to `observability` task property
-- remove the `assignee` task property
-- add `title`, `definition_of_done`, and `recommended` properties to `task` and make them required
+Required task fields: `task_id`, `title`, `model`, `status`, `definition_of_done`, and `recommended`. `definition_of_done` must be a non-empty array of non-empty strings, and `recommended` is an object that requires an `approach` string (additional properties are rejected).
+
+Observability metadata is optional, but when present it must include:
+- `run_attempts`: integer ≥ 0
+- `last_note`: string
+- `last_update_utc`: RFC 3339 / ISO 8601 timestamp (`string` with `date-time` format)
+- `last_run_id`: non-empty `string`
+
+The `assignee` property has been removed from the schema, so tasks should no longer include it.
 
 ### use quality commit messages
 the current commit messages are only useful for debugging. use the task title
