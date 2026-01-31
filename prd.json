@@ -64,7 +64,7 @@
       "task_id": "SCHEMA-004",
       "title": "Update README schema guidance and example",
       "model": "gpt-5.1-codex-mini",
-      "status": "unstarted",
+      "status": "completed",
       "definition_of_done": [
         "README TODO example reflects the updated task schema.",
         "Field descriptions and required list match prd.schema.json."
@@ -73,9 +73,12 @@
         "approach": "Keep example minimal but complete and valid."
       },
       "observability": {
-        "run_attempts": 0,
-        "last_note": ""
-      }
+        "run_attempts": 1,
+        "last_note": "Run 20260131T005655Z-6368 completed",
+        "last_run_id": "20260131T005655Z-6368",
+        "last_update_utc": "2026-01-31T00:59:08Z"
+      },
+      "assignee": "ralph-loop"
     },
     {
       "task_id": "SCHEMA-005",

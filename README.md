@@ -89,41 +89,37 @@ ralph-loop --tasks prd.json 2>&1 | tee .ralph/ralph.log | lnav -
 
 ## Task schema guidance
 
-Tasks must look similar to the example below and include the mandatory metadata the schema enforces:
+Tasks must conform to `prd.schema.json`. The schema requires the following metadata for every task entry:
+
+- `task_id`: non-empty string that uniquely identifies the task.
+- `title`: non-empty string summarizing the work.
+- `status`: one of `"unstarted"`, `"started"`, `"blocked"`, or `"completed"`.
+- `model`: one of `"gpt-5.1-codex-mini"`, `"gpt-5.1-codex"`, `"gpt-5.2-codex"`, or `"human"`.
+- `definition_of_done`: non-empty array of non-empty strings describing completion criteria.
+- `recommended`: object requiring an `approach` string (no other keys allowed).
+
+The optional `observability` object must appear only when there is recent run metadata, and it must include `run_attempts` (integer ≥ 0), `last_note` (string), `last_update_utc` (RFC 3339 / ISO 8601 string), and `last_run_id` (non-empty string).
+
+The `assignee` property has been removed from the schema, so new tasks should no longer include it.
+
+Minimal compliant example:
 
 ```
     {
-      "task_id": "ASM-001",
-      "title": "Define pack/manifest.json schema in INTERFACE.md",
-      "model": "gpt-5.1-codex",
-      "status": "completed",
+      "task_id": "ASM-004",
+      "title": "Update README schema guidance",
+      "model": "gpt-5.1-codex-mini",
+      "status": "started",
       "definition_of_done": [
-        "INTERFACE.md exists in repo root.",
-        "Manifest section lists required fields with types and constraints.",
-        "repo_commit fallback of \"unknown\" and created_at RFC3339 are documented.",
-        "Minimal manifest example JSON included."
+        "README describes every required task field",
+        "Example reflects current schema",
+        "Observability guidance notes required keys"
       ],
       "recommended": {
-        "approach": "Keep schema descriptions precise and machine-oriented; prefer tables or bullet lists."
-      },
-      "observability": {
-        "run_attempts": 1,
-        "last_note": "Run 20260127T224200Z-65016 completed",
-        "last_update_utc": "2026-01-27T22:42:00Z",
-        "last_run_id": "65016"
+        "approach": "Keep the example minimal but complete and valid."
       }
     }
 ```
-
-Required task fields: `task_id`, `title`, `model`, `status`, `definition_of_done`, and `recommended`. `definition_of_done` must be a non-empty array of non-empty strings, and `recommended` is an object that requires an `approach` string (additional properties are rejected).
-
-Observability metadata is optional, but when present it must include:
-- `run_attempts`: integer ≥ 0
-- `last_note`: string
-- `last_update_utc`: RFC 3339 / ISO 8601 timestamp (`string` with `date-time` format)
-- `last_run_id`: non-empty `string`
-
-The `assignee` property has been removed from the schema, so tasks should no longer include it.
 
 ### use quality commit messages
 the current commit messages are only useful for debugging. use the task title
