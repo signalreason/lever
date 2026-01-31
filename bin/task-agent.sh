@@ -1054,16 +1054,29 @@ has_python_tests() {
 VERIFY_OK=true
 VERIFY_LOG="${RUN_DIR}/verify.log"
 : >"$VERIFY_LOG"
+VERIFY_CMD=""
 
 if [[ "$OUTCOME" == "completed" && "$DOD_MET" == "true" ]]; then
   if [[ -x "./scripts/ci.sh" ]]; then
+    VERIFY_CMD="./scripts/ci.sh"
     ./scripts/ci.sh >"$VERIFY_LOG" 2>&1 || VERIFY_OK=false
   elif [[ -f "Makefile" ]] && grep -qE '^[[:space:]]*ci:' Makefile; then
+    VERIFY_CMD="make ci"
     make ci >"$VERIFY_LOG" 2>&1 || VERIFY_OK=false
   elif [[ -x "./tests/run.sh" ]]; then
+    VERIFY_CMD="./tests/run.sh"
     ./tests/run.sh >"$VERIFY_LOG" 2>&1 || VERIFY_OK=false
   elif command -v pytest >/dev/null 2>&1 && has_python_tests; then
+    VERIFY_CMD="pytest -q"
     pytest -q >"$VERIFY_LOG" 2>&1 || VERIFY_OK=false
+  fi
+fi
+
+if [[ -n "$VERIFY_CMD" ]]; then
+  if [[ "$VERIFY_OK" == "true" ]]; then
+    log_line "INFO" "Verification succeeded" "task_id=${TASK_ID}" "run_id=${RUN_ID}" "command=${VERIFY_CMD}" "log=${VERIFY_LOG}"
+  else
+    log_line "WARN" "Verification failed" "task_id=${TASK_ID}" "run_id=${RUN_ID}" "command=${VERIFY_CMD}" "log=${VERIFY_LOG}"
   fi
 fi
 
