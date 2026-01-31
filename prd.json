@@ -25,7 +25,7 @@
       "task_id": "SCHEMA-002",
       "title": "Specify updated task schema details",
       "model": "gpt-5.1-codex-mini",
-      "status": "started",
+      "status": "blocked",
       "definition_of_done": [
         "Drafted the updated task fields and required list from README TODO.",
         "Documented observability fields and their types/constraints."
@@ -35,9 +35,9 @@
       },
       "observability": {
         "run_attempts": 3,
-        "last_note": "Run 20260131T004350Z-94733 progress. outcome=completed dod_met=true verify_ok=false. See .ralph/runs/SCHEMA-002/20260131T004350Z-94733/result.json",
-        "last_run_id": "20260131T004350Z-94733",
-        "last_update_utc": "2026-01-31T00:45:13Z"
+        "last_note": "Attempt limit reached (3/3). Use --reset-task after human intervention.",
+        "last_run_id": "20260131T004514Z-96087",
+        "last_update_utc": "2026-01-31T00:45:14Z"
       },
       "assignee": "ralph-loop"
     },
