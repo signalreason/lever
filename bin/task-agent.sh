@@ -136,6 +136,18 @@ log_line() {
   fi
 }
 
+compact_text() {
+  local input="${1:-}"
+  local limit="${2:-200}"
+  input="${input//$'\n'/ }"
+  input="${input//$'\r'/ }"
+  if [[ ${#input} -gt $limit ]]; then
+    printf '%s...\n' "${input:0:$limit}"
+  else
+    printf '%s\n' "$input"
+  fi
+}
+
 root_selector='(if type=="object" and has("tasks") then .tasks else . end)'
 
 first_incomplete_task_jq="
@@ -495,6 +507,118 @@ def compact(value, limit=400):
         return value[:limit] + "..."
     return value
 
+def coalesce(*values):
+    for value in values:
+        if value is not None and value != "":
+            return value
+    return None
+
+def normalize_text(value):
+    if value is None:
+        return None
+    if isinstance(value, (int, float, bool)):
+        return str(value)
+    if isinstance(value, str):
+        return value
+    return None
+
+def extract_text(entry):
+    if not isinstance(entry, dict):
+        return None
+    item = entry.get("item")
+    if isinstance(item, dict):
+        item_text = item.get("text") or item.get("content")
+        if isinstance(item_text, str) and item_text.strip():
+            return item_text
+    text = extract_message(entry)
+    if text:
+        return text
+    for key in ("delta", "output_text", "text", "content"):
+        value = entry.get(key)
+        if isinstance(value, str):
+            return value
+        if isinstance(value, dict):
+            nested = extract_message({"message": value})
+            if nested:
+                return nested
+        if isinstance(value, list):
+            parts = []
+            for item in value:
+                if isinstance(item, str):
+                    parts.append(item)
+                elif isinstance(item, dict):
+                    nested = item.get("text") or item.get("content")
+                    if isinstance(nested, str):
+                        parts.append(nested)
+            if parts:
+                return " ".join(parts)
+    return None
+
+def format_kv(pairs):
+    items = []
+    for key, value in pairs:
+        value = normalize_text(value)
+        if value is None:
+            continue
+        value = compact(str(value), 120)
+        items.append(f"{key}={value}")
+    return " ".join(items)
+
+def summarize_usage(usage):
+    if not isinstance(usage, dict):
+        return None
+    input_tokens = usage.get("input_tokens") or usage.get("prompt_tokens")
+    output_tokens = usage.get("output_tokens") or usage.get("completion_tokens")
+    total_tokens = usage.get("total_tokens")
+    if input_tokens is None and output_tokens is None and total_tokens is None:
+        return None
+    if total_tokens is None:
+        try:
+            total_tokens = int(input_tokens or 0) + int(output_tokens or 0)
+        except Exception:
+            total_tokens = None
+    parts = []
+    if input_tokens is not None:
+        parts.append(f"in={input_tokens}")
+    if output_tokens is not None:
+        parts.append(f"out={output_tokens}")
+    if total_tokens is not None:
+        parts.append(f"total={total_tokens}")
+    return "tokens(" + ",".join(parts) + ")"
+
+def summarize_item(entry):
+    if not isinstance(entry, dict):
+        return []
+    item = entry.get("item")
+    if not isinstance(item, dict):
+        return []
+    pairs = []
+    item_type = coalesce(item.get("type"), item.get("item_type"))
+    if item_type:
+        pairs.append(("item", item_type))
+    role = item.get("role")
+    if role:
+        pairs.append(("role", role))
+    name = coalesce(item.get("name"), item.get("tool_name"), item.get("tool"))
+    if name:
+        pairs.append(("name", name))
+    if item_type == "command_execution":
+        command = item.get("command")
+        if isinstance(command, str) and command:
+            pairs.append(("cmd", command))
+        exit_code = item.get("exit_code")
+        if exit_code is not None:
+            pairs.append(("exit_code", exit_code))
+    call = item.get("call")
+    if isinstance(call, dict):
+        call_name = coalesce(call.get("name"), call.get("tool_name"), call.get("tool"))
+        if call_name:
+            pairs.append(("tool", call_name))
+    status = item.get("status")
+    if status:
+        pairs.append(("status", status))
+    return pairs
+
 if not log_path:
     raise SystemExit
 
@@ -524,11 +648,32 @@ with open(log_path, "r") as fh:
                     level = "ERROR"
                 event_type = entry.get("type") or entry.get("event") or entry.get("level") or "event"
                 detail = extract_message(entry) or entry.get("detail") or entry.get("error") or ""
-                detail = compact(str(detail)) if detail else ""
+                if not detail:
+                    detail = extract_text(entry) or ""
+                detail = compact(str(detail), 240) if detail else ""
+                kv = []
+                kv.extend(summarize_item(entry))
+                model = entry.get("model")
+                if model:
+                    kv.append(("model", model))
+                tool_name = coalesce(entry.get("tool_name"), entry.get("tool"))
+                if tool_name:
+                    kv.append(("tool", tool_name))
+                code = coalesce(entry.get("code"), entry.get("error_code"))
+                if code:
+                    kv.append(("code", code))
+                usage = summarize_usage(entry.get("usage"))
+                if usage:
+                    kv.append(("usage", usage))
+                kv_text = format_kv(kv)
                 ts = pick_ts(entry)
                 suffix = f" task_id={task_id} run_id={run_id}"
-                if detail:
+                if detail and kv_text:
+                    print(f"{ts} {level} codex {event_type} {detail} {kv_text}{suffix}", flush=True)
+                elif detail:
                     print(f"{ts} {level} codex {event_type} {detail}{suffix}", flush=True)
+                elif kv_text:
+                    print(f"{ts} {level} codex {event_type} {kv_text}{suffix}", flush=True)
                 else:
                     print(f"{ts} {level} codex {event_type}{suffix}", flush=True)
                 continue
@@ -872,6 +1017,24 @@ fi
 
 OUTCOME="$(jq -r '.outcome' "$RESULT_PATH")"
 DOD_MET="$(jq -r '.dod_met' "$RESULT_PATH")"
+RESULT_SUMMARY="$(jq -r '.summary // ""' "$RESULT_PATH")"
+RESULT_NOTES="$(jq -r '.notes // ""' "$RESULT_PATH")"
+RESULT_TESTS_RAN="$(jq -r '.tests.ran // false' "$RESULT_PATH")"
+RESULT_TESTS_PASSED="$(jq -r '.tests.passed // false' "$RESULT_PATH")"
+
+if [[ -n "$RESULT_SUMMARY" ]]; then
+  short_summary="$(compact_text "$RESULT_SUMMARY" 220)"
+  log_line "INFO" "Result summary: ${short_summary}" "task_id=${TASK_ID}" "run_id=${RUN_ID}" "outcome=${OUTCOME}" "dod_met=${DOD_MET}" "tests_ran=${RESULT_TESTS_RAN}" "tests_passed=${RESULT_TESTS_PASSED}"
+fi
+
+if [[ "$DOD_MET" != "true" ]]; then
+  if [[ -n "$RESULT_NOTES" ]]; then
+    short_notes="$(compact_text "$RESULT_NOTES" 220)"
+    log_line "WARN" "Definition of done not met: ${short_notes}" "task_id=${TASK_ID}" "run_id=${RUN_ID}" "outcome=${OUTCOME}"
+  else
+    log_line "WARN" "Definition of done not met" "task_id=${TASK_ID}" "run_id=${RUN_ID}" "outcome=${OUTCOME}"
+  fi
+fi
 
 has_python_tests() {
   if [[ -f "pytest.ini" || -f "pyproject.toml" || -f "setup.cfg" || -f "tox.ini" ]]; then
