@@ -101,7 +101,7 @@
       "task_id": "SCHEMA-006",
       "title": "Update tests to validate new schema",
       "model": "gpt-5.1-codex-mini",
-      "status": "unstarted",
+      "status": "completed",
       "definition_of_done": [
         "Test fixtures include newly required fields.",
         "Schema validation (if present) passes with updated requirements."
@@ -110,8 +110,10 @@
         "approach": "Adjust tests/test-*.sh fixtures to match updated schema."
       },
       "observability": {
-        "run_attempts": 0,
-        "last_note": ""
+        "run_attempts": 1,
+        "last_note": "Run 20260201T070350Z-94122 completed",
+        "last_run_id": "20260201T070350Z-94122",
+        "last_update_utc": "2026-02-01T07:08:36Z"
       }
     },
     {

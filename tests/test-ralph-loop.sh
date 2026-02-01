@@ -23,6 +23,12 @@ cat > "$repo_dir/prd.json" <<'JSON'
       ],
       "recommended": {
         "approach": "Keep this stub simple"
+      },
+      "observability": {
+        "run_attempts": 0,
+        "last_note": "",
+        "last_run_id": "ralph-loop-init",
+        "last_update_utc": "2026-02-01T00:00:00Z"
       }
     }
   ]

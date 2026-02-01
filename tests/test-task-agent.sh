@@ -26,6 +26,12 @@ cat > "$repo_dir/prd.json" <<'JSON'
       ],
       "recommended": {
         "approach": "Treat the stub run as a simple success path"
+      },
+      "observability": {
+        "run_attempts": 0,
+        "last_note": "",
+        "last_run_id": "task-agent-init",
+        "last_update_utc": "2026-02-01T00:00:00Z"
       }
     }
   ]
