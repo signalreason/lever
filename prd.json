@@ -4,7 +4,7 @@
       "task_id": "LEVER-001",
       "title": "Audit existing CLI behavior and flags",
       "model": "gpt-5.1-codex-mini",
-      "status": "unstarted",
+      "status": "completed",
       "definition_of_done": [
         "Reviewed bin/task-agent.sh and bin/ralph-loop.sh for flag parsing and behavior.",
         "Captured current task selection and loop semantics from scripts and README.",
@@ -12,6 +12,12 @@
       ],
       "recommended": {
         "approach": "Use rg across bin/ and README.md to map flags and defaults before coding."
+      },
+      "observability": {
+        "run_attempts": 1,
+        "last_run_id": "20260201T094927Z-6921",
+        "last_update_utc": "2026-02-01T09:50:10Z",
+        "last_note": "Run 20260201T094927Z-6921 completed"
       }
     },
     {
