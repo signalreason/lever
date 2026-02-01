@@ -84,7 +84,7 @@
       "task_id": "LEVER-005",
       "title": "Implement task selection rules",
       "model": "gpt-5.1-codex-mini",
-      "status": "unstarted",
+      "status": "completed",
       "definition_of_done": [
         "If --task-id is provided, lever verifies the task exists or errors.",
         "If --task-id is not provided and --loop is not set, lever selects the next non-completed task.",
@@ -92,6 +92,11 @@
       ],
       "recommended": {
         "approach": "Parse the tasks JSON and reuse any existing selection rules if present."
+      },
+      "observability": {
+        "last_run_id": "20260201T100839Z-26548",
+        "last_update_utc": "2026-02-01T10:14:37Z",
+        "last_note": "Run 20260201T100839Z-26548 completed"
       }
     },
     {
