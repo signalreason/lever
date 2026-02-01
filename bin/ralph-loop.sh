@@ -86,6 +86,13 @@ else
   fi
 fi
 
+TASK_AGENT_EXEC=("$TASK_AGENT_BIN")
+if [[ -f "$TASK_AGENT_BIN" ]]; then
+  if head -n 1 "$TASK_AGENT_BIN" | grep -qE '^#!.*\bbash\b'; then
+    TASK_AGENT_EXEC=(bash "$TASK_AGENT_BIN")
+  fi
+fi
+
 if ! command -v jq >/dev/null 2>&1; then
   die "jq is required"
 fi
@@ -106,6 +113,7 @@ first_incomplete_task_fields() {
 cycle=0
 stop_reason=""
 info "Starting the ${TRAIT_NAME} loop; tasks file=$TASKS_FILE"
+info "Using task agent: ${TASK_AGENT_EXEC[*]}"
 
 while true; do
   task_fields="$(first_incomplete_task_fields)"
@@ -131,8 +139,13 @@ while true; do
   cycle=$((cycle + 1))
   info "Cycle $cycle: running ${task_id} (status=${task_status})"
 
+  TASK_AGENT_ARGS=(--tasks "$TASKS_FILE" --task-id "$task_id" --prompt "$PROMPT_FILE" --workspace "$WORKSPACE")
+  if [[ -n "${ASSIGNEE:-}" ]]; then
+    TASK_AGENT_ARGS+=(--assignee "$ASSIGNEE")
+  fi
+
   set +e
-  "$TASK_AGENT_BIN" --tasks "$TASKS_FILE" --task-id "$task_id" --assignee "$ASSIGNEE" --prompt "$PROMPT_FILE" --workspace "$WORKSPACE"
+  "${TASK_AGENT_EXEC[@]}" "${TASK_AGENT_ARGS[@]}"
   exit_code=$?
   set -e
 

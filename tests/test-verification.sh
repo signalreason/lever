@@ -18,8 +18,15 @@ cat > "$repo_dir/prd.json" <<'JSON'
   "tasks": [
     {
       "task_id": "T1",
+      "title": "Verification smoke test",
       "status": "unstarted",
-      "model": "gpt-5.1-codex-mini"
+      "model": "gpt-5.1-codex-mini",
+      "definition_of_done": [
+        "Ensure codex stub returns success"
+      ],
+      "recommended": {
+        "approach": "Treat verification as a simple placeholder run"
+      }
     }
   ]
 }

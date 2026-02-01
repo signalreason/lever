@@ -57,8 +57,7 @@
         "last_note": "Run 20260131T005518Z-4583 completed",
         "last_run_id": "20260131T005518Z-4583",
         "last_update_utc": "2026-01-31T00:56:55Z"
-      },
-      "assignee": "ralph-loop"
+      }
     },
     {
       "task_id": "SCHEMA-004",
@@ -77,14 +76,13 @@
         "last_note": "Run 20260131T005655Z-6368 completed",
         "last_run_id": "20260131T005655Z-6368",
         "last_update_utc": "2026-01-31T00:59:08Z"
-      },
-      "assignee": "ralph-loop"
+      }
     },
     {
       "task_id": "SCHEMA-005",
       "title": "Update scripts for schema changes",
       "model": "gpt-5.1-codex-mini",
-      "status": "unstarted",
+      "status": "completed",
       "definition_of_done": [
         "bin/task-agent.sh handles required fields without relying on assignee.",
         "bin/ralph-loop.sh continues to pass assignee only where needed."
@@ -93,8 +91,10 @@
         "approach": "Search for assignee usage and adjust to new schema."
       },
       "observability": {
-        "run_attempts": 0,
-        "last_note": ""
+        "run_attempts": 1,
+        "last_note": "Run 20260201T065514Z-84569 completed",
+        "last_run_id": "20260201T065514Z-84569",
+        "last_update_utc": "2026-02-01T07:03:50Z"
       }
     },
     {

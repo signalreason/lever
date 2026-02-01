@@ -18,8 +18,15 @@ cat > "$repo_dir/prd.json" <<'JSON'
   "tasks": [
     {
       "task_id": "T1",
+      "title": "Task agent smoke test",
       "status": "unstarted",
-      "model": "gpt-5.1-codex-mini"
+      "model": "gpt-5.1-codex-mini",
+      "definition_of_done": [
+        "Allow the stub codex to finish"
+      ],
+      "recommended": {
+        "approach": "Treat the stub run as a simple success path"
+      }
     }
   ]
 }

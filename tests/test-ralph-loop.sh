@@ -15,8 +15,15 @@ cat > "$repo_dir/prd.json" <<'JSON'
   "tasks": [
     {
       "task_id": "T1",
+      "title": "Ralph loop stub",
       "status": "unstarted",
-      "model": "gpt-5.1-codex-mini"
+      "model": "gpt-5.1-codex-mini",
+      "definition_of_done": [
+        "Verify the loop delegates task execution"
+      ],
+      "recommended": {
+        "approach": "Keep this stub simple"
+      }
     }
   ]
 }

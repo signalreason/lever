@@ -9,11 +9,15 @@ set -euo pipefail
 #   - git
 #
 # Typical usage:
-#   bin/task-agent --tasks ./tasks.json --task-id TUI-010 --assignee ralph-01
-#   bin/task-agent --tasks ./tasks.json --next --assignee ralph-01
+#   bin/task-agent --tasks ./tasks.json --task-id TUI-010
+#   bin/task-agent --tasks ./tasks.json --next
+# Optional --assignee <name> remains for logging/social metadata, but it is not written into tasks.
 
 TASKS_FILE=""
 TASK_ID=""
+TASK_TITLE=""
+TASK_RECOMMENDED_APPROACH=""
+TASK_DEFINITION_OF_DONE=()
 ASSIGNEE="${ASSIGNEE:-task-agent}"
 WORKSPACE="${WORKSPACE:-$PWD}"
 NEXT=false
@@ -42,7 +46,7 @@ Options:
   --tasks      Path to tasks JSON file
   --task-id    Specific task_id to run
   --next       Select first task with status!=completed and model!=human
-  --assignee   Name to store for observability
+  --assignee   Optional label included in logs (not persisted to tasks)
   --workspace  Repo directory to run in (default: current)
   --prompt     Prompt file to send to the LLM (default: ~/.prompts/autonomous-senior-engineer.prompt.md)
   --reset-task Reset attempt counter/status for the selected task before running
@@ -691,6 +695,40 @@ stop_codex_log_stream() {
   fi
 }
 
+validate_task_metadata() {
+  local missing
+  missing="$(
+    jq -r '
+      def dod_valid:
+        (.definition_of_done? // null) as $dod
+        | ($dod | type == "array") and ($dod | length > 0) and ($dod | all(type == "string" and length > 0));
+      def recommended_valid:
+        (.recommended? // null) as $rec
+        | ($rec | type == "object") and ($rec | has("approach"))
+        and (($rec | .approach | type == "string" and length > 0))
+        and (($rec | keys | length) == 1);
+      [
+        if (.title // "" | length > 0) then empty else "title" end,
+        if dod_valid then empty else "definition_of_done" end,
+        if recommended_valid then empty else "recommended.approach" end
+      ]
+      | map(select(. != null))
+      | join(", ")
+    ' <<<"$task_json"
+  )"
+
+  if [[ -n "$missing" ]]; then
+    log_line "ERROR" "Task metadata incomplete" "task_id=${TASK_ID}" "missing=${missing}"
+    echo "Task ${TASK_ID} missing required metadata: ${missing}" >&2
+    exit 2
+  fi
+
+  TASK_TITLE="$(jq -r '.title // ""' <<<"$task_json")"
+  TASK_RECOMMENDED_APPROACH="$(jq -r '.recommended.approach // ""' <<<"$task_json")"
+  TASK_DEFINITION_OF_DONE=()
+  mapfile -t TASK_DEFINITION_OF_DONE < <(jq -r '.definition_of_done[]' <<<"$task_json")
+}
+
 increment_attempt_count() {
   local tmp file
   tmp="$(mktemp)"
@@ -730,13 +768,11 @@ reset_task_attempts() {
   jq \
     --arg id "$TASK_ID" \
     --arg st "unstarted" \
-    --arg asg "$ASSIGNEE" \
     --arg rid "$RUN_ID" \
     --arg note "$note" \
     '
     def reset:
       .status = $st
-      | .assignee = $asg
       | .observability.run_attempts = 0
       | .observability.last_run_id = $rid
       | .observability.last_update_utc = (now | todateiso8601)
@@ -762,13 +798,11 @@ update_task_status() {
   jq \
     --arg id "$TASK_ID" \
     --arg st "$new_status" \
-    --arg asg "$ASSIGNEE" \
     --arg rid "$RUN_ID" \
     --arg note "$note" \
     '
     def upd:
       .status = $st
-      | .assignee = $asg
       | .observability.last_run_id = $rid
       | .observability.last_update_utc = (now | todateiso8601)
       | (if ($note | length) > 0
@@ -855,6 +889,8 @@ TASK_ID="$(jq -r '.task_id' <<<"$task_json")"
 MODEL="$(jq -r '.model' <<<"$task_json")"
 STATUS="$(jq -r '.status' <<<"$task_json")"
 
+validate_task_metadata
+
 if [[ "$MODEL" == "human" ]]; then
   echo "Task requires human: $TASK_ID" >&2
   exit 4
@@ -868,7 +904,7 @@ case "$MODEL" in
     ;;
 esac
 
-log_line "INFO" "Task selected" "task_id=${TASK_ID}" "model=${MODEL}" "status=${STATUS}"
+log_line "INFO" "Task selected" "task_id=${TASK_ID}" "title=${TASK_TITLE}" "model=${MODEL}" "status=${STATUS}" "dod_count=${#TASK_DEFINITION_OF_DONE[@]}" "assignee=${ASSIGNEE}"
 
 capture_repo_state
 stash_local_changes
@@ -878,7 +914,7 @@ RUN_ID="$(date -u +"%Y%m%dT%H%M%SZ")-$$"
 TASK_BRANCH="ralph/${TASK_ID}"
 checkout_task_branch
 
-log_line "INFO" "Run started" "task_id=${TASK_ID}" "run_id=${RUN_ID}" "branch=${TASK_BRANCH}"
+log_line "INFO" "Run started" "task_id=${TASK_ID}" "title=${TASK_TITLE}" "run_id=${RUN_ID}" "branch=${TASK_BRANCH}" "assignee=${ASSIGNEE}"
 
 if [[ "$RESET_TASK" == true ]]; then
   reset_task_attempts "Reset attempts via --reset-task"
@@ -940,7 +976,15 @@ fi
 # Build the per-run prompt for Codex
 PROMPT_PATH="${RUN_DIR}/prompt.md"
 cat "$PROMPT_FILE" >"$PROMPT_PATH"
-printf '\n\nTask JSON (authoritative):\n%s\n' "$(cat "${RUN_DIR}/task.json")" >>"$PROMPT_PATH"
+{
+  printf '\n\nTask title: %s\n' "$TASK_TITLE"
+  printf '\nDefinition of done:\n'
+  for dod_item in "${TASK_DEFINITION_OF_DONE[@]}"; do
+    printf '  - %s\n' "$dod_item"
+  done
+  printf '\nRecommended approach:\n%s\n' "$TASK_RECOMMENDED_APPROACH"
+  printf '\nTask JSON (authoritative):\n%s\n' "$(cat "${RUN_DIR}/task.json")"
+} >>"$PROMPT_PATH"
 
 RESULT_PATH="${RUN_DIR}/result.json"
 CODEX_LOG="${RUN_DIR}/codex.jsonl"

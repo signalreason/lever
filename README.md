@@ -42,7 +42,7 @@ ralph-loop \
 Common options:
 - `--tasks <path>`: tasks JSON file (default: `prd.json` in the current working directory).
 - `--prompt <path>`: prompt file used by the task agent (default: `~/.prompts/autonomous-senior-engineer.prompt.md`).
-- `--assignee <name>`: assignee label (default: `ralph-loop`).
+- `--assignee <name>`: optional label forwarded to the task agent for log tagging (default: `ralph-loop`); task metadata no longer stores this value.
 - `--task-agent <path>`: task agent executable (default: `task-agent` on PATH).
 - `--log-file <path>`: append logs to this file (default: `.ralph/ralph.log`).
 - `--delay <seconds>`: pause between cycles.
@@ -54,8 +54,7 @@ Run exactly one task iteration via Codex CLI.
 ```bash
 task-agent \
   --tasks prd.json \
-  --task-id ASM-001 \
-  --assignee ralph-loop
+  --task-id ASM-001
 ```
 
 Select the next runnable task:
@@ -64,7 +63,9 @@ Select the next runnable task:
 task-agent \
   --tasks prd.json \
   --next \
-  --assignee ralph-loop
+```
+
+Pass `--assignee <name>` if you want to tag the run in logs; task metadata no longer stores an `assignee` field.
 ```
 
 ## Logs
@@ -101,6 +102,8 @@ Tasks must conform to `prd.schema.json`. The schema requires the following metad
 The optional `observability` object must appear only when there is recent run metadata, and it must include `run_attempts` (integer ≥ 0), `last_note` (string), `last_update_utc` (RFC 3339 / ISO 8601 string), and `last_run_id` (non-empty string).
 
 The `assignee` property has been removed from the schema, so new tasks should no longer include it.
+
+`bin/task-agent.sh` now checks that every selected task exposes `title`, `definition_of_done`, and `recommended.approach` before starting a run. Missing metadata surface as an error, and the new prompt includes each definition-of-done entry plus the recommended approach so the model can reason about the required behavior.
 
 Minimal compliant example:
 
