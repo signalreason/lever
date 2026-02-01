@@ -24,7 +24,7 @@
       "task_id": "LEVER-002",
       "title": "Specify Rust CLI contract and behavior mapping",
       "model": "gpt-5.1-codex-mini",
-      "status": "unstarted",
+      "status": "completed",
       "definition_of_done": [
         "Defined flag mapping to existing scripts, including pass-through behavior.",
         "Documented default tasks file discovery order: prd.json then tasks.json.",
@@ -32,6 +32,12 @@
       ],
       "recommended": {
         "approach": "Write a concise CLI spec to guide implementation and tests."
+      },
+      "observability": {
+        "run_attempts": 3,
+        "last_run_id": "20260201T100033Z-19459",
+        "last_update_utc": "2026-02-01T10:03:45Z",
+        "last_note": "Run 20260201T100033Z-19459 completed"
       }
     },
     {
