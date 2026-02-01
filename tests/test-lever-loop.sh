@@ -122,6 +122,11 @@ run_continuous_case() {
     exit 1
   fi
 
+  if ! grep -q "lever: loop mode active; deferring task selection" "$log"; then
+    echo "missing loop mode message for ${name}" >&2
+    exit 1
+  fi
+
   if grep -q "lever: --loop limit reached" "$log"; then
     echo "unexpected limit log for continuous case ${name}" >&2
     exit 1
