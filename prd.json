@@ -120,7 +120,7 @@
       "task_id": "SCHEMA-007",
       "title": "Verify schema changes and run tests",
       "model": "gpt-5.1-codex-mini",
-      "status": "unstarted",
+      "status": "completed",
       "definition_of_done": [
         "prd.json validates against prd.schema.json.",
         "./tests/run.sh passes."
@@ -129,8 +129,10 @@
         "approach": "Validate with a JSON Schema checker before running tests."
       },
       "observability": {
-        "run_attempts": 0,
-        "last_note": ""
+        "run_attempts": 1,
+        "last_note": "Run 20260201T070836Z-98296 completed",
+        "last_run_id": "20260201T070836Z-98296",
+        "last_update_utc": "2026-02-01T07:10:53Z"
       }
     }
   ]
