@@ -64,7 +64,7 @@
       "task_id": "LEVER-004",
       "title": "Implement tasks file discovery and validation",
       "model": "gpt-5.1-codex-mini",
-      "status": "unstarted",
+      "status": "completed",
       "definition_of_done": [
         "If --tasks is absent, lever searches for prd.json then tasks.json in CWD.",
         "If neither exists, lever exits with a clear error message and non-zero code.",
@@ -72,6 +72,12 @@
       ],
       "recommended": {
         "approach": "Use std::path checks and centralize resolution into a helper."
+      },
+      "observability": {
+        "run_attempts": 1,
+        "last_run_id": "20260201T100643Z-24711",
+        "last_update_utc": "2026-02-01T10:08:39Z",
+        "last_note": "Run 20260201T100643Z-24711 completed"
       }
     },
     {
