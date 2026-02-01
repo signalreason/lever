@@ -1,8 +1,10 @@
 use std::{
     error::Error,
+    ffi::OsString,
+    fmt::{self, Display, Formatter},
     fs,
     path::{Path, PathBuf},
-    process::Command,
+    process::{Command, ExitStatus},
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -13,7 +15,7 @@ use clap::{value_parser, Parser};
 use serde::Deserialize;
 use serde_json::Value;
 
-const PLACEHOLDER_COMMAND: &str = "/usr/bin/true";
+const DEFAULT_COMMAND_PATH: &str = "bin/task-agent.sh";
 const TASK_FILE_SEARCH_ORDER: [&str; 2] = ["prd.json", "tasks.json"];
 
 #[derive(Debug, Clone, Deserialize)]
@@ -24,6 +26,39 @@ struct Task {
 }
 
 type DynError = Box<dyn Error + Send + Sync + 'static>;
+
+struct ExecutionConfig {
+    command_path: PathBuf,
+    tasks_path: PathBuf,
+    prompt: Option<PathBuf>,
+    explicit_task_id: Option<String>,
+    workspace: PathBuf,
+}
+
+#[derive(Debug)]
+struct TaskAgentExit {
+    command: PathBuf,
+    status: ExitStatus,
+}
+
+impl TaskAgentExit {
+    fn exit_code(&self) -> Option<i32> {
+        self.status.code()
+    }
+}
+
+impl Display for TaskAgentExit {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "task agent {} exited with status {}",
+            self.command.display(),
+            self.status
+        )
+    }
+}
+
+impl Error for TaskAgentExit {}
 
 #[derive(Parser, Debug)]
 #[command(
@@ -69,8 +104,8 @@ struct LeverArgs {
     #[arg(
         long = "command-path",
         value_name = "PATH",
-        default_value = PLACEHOLDER_COMMAND,
-        help = "Executable that the placeholder runner will invoke"
+        default_value = DEFAULT_COMMAND_PATH,
+        help = "Executable invoked for each iteration (defaults to bin/task-agent.sh)"
     )]
     command_path: PathBuf,
 }
@@ -85,6 +120,11 @@ fn main() -> Result<(), DynError> {
     } = LeverArgs::parse();
 
     let tasks_path = resolve_tasks_path(tasks)?;
+    let workspace = tasks_path
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("."));
+    let command_path = resolve_command_path(command_path, &workspace)?;
     let tasks = load_tasks(&tasks_path)?;
     let loop_mode = resolve_loop_mode(loop_count);
     let selecting_next = task_id.is_none() && matches!(loop_mode, LoopMode::Single);
@@ -123,7 +163,22 @@ fn main() -> Result<(), DynError> {
         println!("lever: loop mode active; deferring task selection");
     }
 
-    run_iterations(&command_path, loop_mode, &shutdown_flag)?;
+    let exec_config = ExecutionConfig {
+        command_path,
+        tasks_path: tasks_path.clone(),
+        prompt: prompt.clone(),
+        explicit_task_id: task_id.clone(),
+        workspace,
+    };
+
+    if let Err(err) = run_iterations(&exec_config, loop_mode, &shutdown_flag) {
+        if let Some(task_err) = err.downcast_ref::<TaskAgentExit>() {
+            eprintln!("{}", task_err);
+            let code = task_err.exit_code().unwrap_or(1);
+            std::process::exit(code);
+        }
+        return Err(err);
+    }
 
     Ok(())
 }
@@ -211,7 +266,7 @@ fn status_is_completed(status: Option<&str>) -> bool {
 fn resolve_tasks_path(tasks_arg: Option<PathBuf>) -> Result<PathBuf, DynError> {
     if let Some(explicit) = tasks_arg {
         if explicit.is_file() {
-            Ok(explicit)
+            return canonicalize_existing_path(explicit);
         } else {
             Err(format!(
                 "The specified tasks file {} does not exist or is not a file",
@@ -223,7 +278,7 @@ fn resolve_tasks_path(tasks_arg: Option<PathBuf>) -> Result<PathBuf, DynError> {
         for candidate in TASK_FILE_SEARCH_ORDER {
             let candidate_path = Path::new(candidate);
             if candidate_path.is_file() {
-                return Ok(candidate_path.to_path_buf());
+                return canonicalize_existing_path(candidate_path.to_path_buf());
             }
         }
 
@@ -235,19 +290,23 @@ fn resolve_tasks_path(tasks_arg: Option<PathBuf>) -> Result<PathBuf, DynError> {
     }
 }
 
-fn run_placeholder_command(command_path: &Path) -> Result<(), DynError> {
-    let status = Command::new(command_path).status()?;
-
-    if status.success() {
-        Ok(())
-    } else {
-        Err(format!(
-            "placeholder command {} exited with status {}",
-            command_path.display(),
-            status
-        )
-        .into())
+fn resolve_command_path(path: PathBuf, workspace: &Path) -> Result<PathBuf, DynError> {
+    let path_str = path.as_os_str().to_string_lossy();
+    if path.is_absolute() {
+        return canonicalize_existing_path(path);
     }
+
+    if path_str.contains('/') || path_str.contains('\\') {
+        let anchored = workspace.join(&path);
+        return canonicalize_existing_path(anchored);
+    } else {
+        Ok(path)
+    }
+}
+
+fn canonicalize_existing_path(path: PathBuf) -> Result<PathBuf, DynError> {
+    fs::canonicalize(&path)
+        .map_err(|err| format!("Failed to resolve {}: {}", path.display(), err).into())
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -272,34 +331,38 @@ fn resolve_loop_mode(loop_count: Option<u64>) -> LoopMode {
 }
 
 fn run_iterations(
-    command_path: &Path,
+    config: &ExecutionConfig,
     loop_mode: LoopMode,
     shutdown_flag: &AtomicBool,
 ) -> Result<(), DynError> {
     match loop_mode {
-        LoopMode::Single => run_single_iteration(command_path, shutdown_flag),
-        LoopMode::Continuous => run_loop_iterations(command_path, None, shutdown_flag),
-        LoopMode::Count(limit) => run_loop_iterations(command_path, Some(limit), shutdown_flag),
+        LoopMode::Single => run_single_iteration(config, shutdown_flag),
+        LoopMode::Continuous => run_loop_iterations(config, None, shutdown_flag),
+        LoopMode::Count(limit) => run_loop_iterations(config, Some(limit), shutdown_flag),
     }
 }
 
-fn run_single_iteration(command_path: &Path, shutdown_flag: &AtomicBool) -> Result<(), DynError> {
-    run_placeholder_command(command_path)?;
+fn run_single_iteration(
+    config: &ExecutionConfig,
+    shutdown_flag: &AtomicBool,
+) -> Result<(), DynError> {
+    run_once(config, config.explicit_task_id.is_none(), shutdown_flag)?;
     if shutdown_flag.load(Ordering::SeqCst) {
-        println!("lever: shutdown requested during placeholder execution");
+        println!("lever: shutdown requested during task-agent execution");
     } else {
-        println!("lever: placeholder execution finished");
+        println!("lever: task-agent execution finished");
     }
 
     Ok(())
 }
 
 fn run_loop_iterations(
-    command_path: &Path,
+    config: &ExecutionConfig,
     max_iterations: Option<u64>,
     shutdown_flag: &AtomicBool,
 ) -> Result<(), DynError> {
     let mut iteration = 0;
+    let use_next = config.explicit_task_id.is_none();
 
     loop {
         if shutdown_flag.load(Ordering::SeqCst) {
@@ -312,11 +375,11 @@ fn run_loop_iterations(
 
         iteration += 1;
         println!("lever: starting iteration {}", iteration);
-        run_placeholder_command(command_path)?;
+        run_once(config, use_next, shutdown_flag)?;
 
         if shutdown_flag.load(Ordering::SeqCst) {
             println!(
-                "lever: shutdown requested during placeholder execution (iteration {})",
+                "lever: shutdown requested during task-agent execution (iteration {})",
                 iteration
             );
             break;
@@ -333,4 +396,51 @@ fn run_loop_iterations(
     }
 
     Ok(())
+}
+
+fn run_once(
+    config: &ExecutionConfig,
+    allow_next: bool,
+    shutdown_flag: &AtomicBool,
+) -> Result<(), DynError> {
+    let mut command = Command::new(&config.command_path);
+    command.args(config.task_agent_args(allow_next));
+    command.current_dir(&config.workspace);
+
+    let status = command.status()?;
+
+    if status.success()
+        || (shutdown_flag.load(Ordering::SeqCst) && matches!(status.code(), Some(130)))
+    {
+        Ok(())
+    } else {
+        Err(Box::new(TaskAgentExit {
+            command: config.command_path.clone(),
+            status,
+        }))
+    }
+}
+
+impl ExecutionConfig {
+    fn task_agent_args(&self, allow_next: bool) -> Vec<OsString> {
+        let mut args = Vec::new();
+        args.push("--tasks".into());
+        args.push(self.tasks_path.clone().into_os_string());
+        args.push("--workspace".into());
+        args.push(self.workspace.clone().into_os_string());
+
+        if let Some(prompt) = &self.prompt {
+            args.push("--prompt".into());
+            args.push(prompt.clone().into_os_string());
+        }
+
+        if let Some(task_id) = &self.explicit_task_id {
+            args.push("--task-id".into());
+            args.push(task_id.clone().into());
+        } else if allow_next {
+            args.push("--next".into());
+        }
+
+        args
+    }
 }

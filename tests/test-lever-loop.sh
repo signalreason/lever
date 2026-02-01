@@ -117,7 +117,7 @@ run_continuous_case() {
     exit 1
   fi
 
-  if ! grep -q "shutdown requested during placeholder execution" "$log"; then
+  if ! grep -q "shutdown requested during task-agent execution" "$log"; then
     echo "missing shutdown message after Ctrl-C for ${name}" >&2
     exit 1
   fi

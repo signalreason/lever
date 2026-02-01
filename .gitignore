@@ -1,2 +1,4 @@
+.env
 .ralph/
+target/
 .DS_Store

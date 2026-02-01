@@ -9,6 +9,7 @@ require_cmd cargo
 
 repo_dir="$(make_temp_dir)"
 trap 'rm -rf "$repo_dir"' EXIT
+true_bin="$(command -v true)"
 
 cat > "$repo_dir/prd.json" <<'JSON'
 {
@@ -43,7 +44,7 @@ JSON
 
 output="$(
   cargo run --quiet --manifest-path "$TEST_DIR/../Cargo.toml" \
-    -- --tasks "$repo_dir/prd.json"
+    -- --tasks "$repo_dir/prd.json" --command-path "$true_bin"
 )"
 
 if ! grep -q "selected task BETA" <<<"$output"; then
@@ -53,7 +54,7 @@ fi
 
 output="$(
   cargo run --quiet --manifest-path "$TEST_DIR/../Cargo.toml" \
-    -- --tasks "$repo_dir/prd.json" --task-id ALPHA
+    -- --tasks "$repo_dir/prd.json" --task-id ALPHA --command-path "$true_bin"
 )"
 
 if ! grep -q "selected task ALPHA" <<<"$output"; then
@@ -64,7 +65,7 @@ fi
 set +e
 missing_output="$(
   cargo run --quiet --manifest-path "$TEST_DIR/../Cargo.toml" \
-    -- --tasks "$repo_dir/prd.json" --task-id MISSING 2>&1
+    -- --tasks "$repo_dir/prd.json" --task-id MISSING --command-path "$true_bin" 2>&1
 )"
 missing_exit=$?
 set -e
