@@ -103,7 +103,7 @@
       "task_id": "LEVER-006",
       "title": "Implement loop semantics and Ctrl-C handling",
       "model": "gpt-5.1-codex-mini",
-      "status": "unstarted",
+      "status": "completed",
       "definition_of_done": [
         "--loop with no value runs continuously until Ctrl-C.",
         "--loop 0 behaves the same as continuous mode.",
@@ -111,6 +111,12 @@
       ],
       "recommended": {
         "approach": "Use an atomic flag for Ctrl-C and check it between iterations."
+      },
+      "observability": {
+        "run_attempts": 2,
+        "last_run_id": "20260201T102511Z-46939",
+        "last_update_utc": "2026-02-01T10:27:02Z",
+        "last_note": "Run 20260201T102511Z-46939 completed"
       }
     },
     {

@@ -3,7 +3,10 @@ use std::{
     fs,
     path::{Path, PathBuf},
     process::Command,
-    sync::mpsc,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
 };
 
 use clap::{value_parser, Parser};
@@ -53,7 +56,8 @@ struct LeverArgs {
     task_id: Option<String>,
 
     #[arg(
-        long,
+        long = "loop",
+        alias = "loop-count",
         value_name = "COUNT",
         num_args = 0..=1,
         value_parser = value_parser!(u64),
@@ -82,15 +86,19 @@ fn main() -> Result<(), DynError> {
 
     let tasks_path = resolve_tasks_path(tasks)?;
     let tasks = load_tasks(&tasks_path)?;
-    let selecting_next = task_id.is_none() && loop_count.is_none();
+    let loop_mode = resolve_loop_mode(loop_count);
+    let selecting_next = task_id.is_none() && matches!(loop_mode, LoopMode::Single);
     let selected_task =
         determine_selected_task(&tasks, task_id.as_deref(), selecting_next, &tasks_path)?;
 
-    let (shutdown_tx, shutdown_rx) = mpsc::channel::<()>();
-    ctrlc::set_handler(move || {
-        let _ = shutdown_tx.send(());
-    })
-    .map_err(DynError::from)?;
+    let shutdown_flag = Arc::new(AtomicBool::new(false));
+    {
+        let handler_flag = Arc::clone(&shutdown_flag);
+        ctrlc::set_handler(move || {
+            handler_flag.store(true, Ordering::SeqCst);
+        })
+        .map_err(DynError::from)?;
+    }
 
     let prompt_label = prompt
         .as_ref()
@@ -111,17 +119,11 @@ fn main() -> Result<(), DynError> {
             task.status.as_deref().unwrap_or("unstarted"),
             task.model.as_deref().unwrap_or("unset")
         );
-    } else if loop_count.is_some() {
+    } else if loop_mode.is_looping() {
         println!("lever: loop mode active; deferring task selection");
     }
 
-    run_placeholder_command(&command_path)?;
-
-    if shutdown_rx.try_recv().is_ok() {
-        println!("lever: shutdown requested during placeholder execution");
-    } else {
-        println!("lever: placeholder execution finished");
-    }
+    run_iterations(&command_path, loop_mode, &shutdown_flag)?;
 
     Ok(())
 }
@@ -246,4 +248,89 @@ fn run_placeholder_command(command_path: &Path) -> Result<(), DynError> {
         )
         .into())
     }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+enum LoopMode {
+    Single,
+    Continuous,
+    Count(u64),
+}
+
+impl LoopMode {
+    fn is_looping(self) -> bool {
+        !matches!(self, LoopMode::Single)
+    }
+}
+
+fn resolve_loop_mode(loop_count: Option<u64>) -> LoopMode {
+    match loop_count {
+        None => LoopMode::Single,
+        Some(0) => LoopMode::Continuous,
+        Some(n) => LoopMode::Count(n),
+    }
+}
+
+fn run_iterations(
+    command_path: &Path,
+    loop_mode: LoopMode,
+    shutdown_flag: &AtomicBool,
+) -> Result<(), DynError> {
+    match loop_mode {
+        LoopMode::Single => run_single_iteration(command_path, shutdown_flag),
+        LoopMode::Continuous => run_loop_iterations(command_path, None, shutdown_flag),
+        LoopMode::Count(limit) => run_loop_iterations(command_path, Some(limit), shutdown_flag),
+    }
+}
+
+fn run_single_iteration(command_path: &Path, shutdown_flag: &AtomicBool) -> Result<(), DynError> {
+    run_placeholder_command(command_path)?;
+    if shutdown_flag.load(Ordering::SeqCst) {
+        println!("lever: shutdown requested during placeholder execution");
+    } else {
+        println!("lever: placeholder execution finished");
+    }
+
+    Ok(())
+}
+
+fn run_loop_iterations(
+    command_path: &Path,
+    max_iterations: Option<u64>,
+    shutdown_flag: &AtomicBool,
+) -> Result<(), DynError> {
+    let mut iteration = 0;
+
+    loop {
+        if shutdown_flag.load(Ordering::SeqCst) {
+            println!(
+                "lever: shutdown requested before starting iteration {}",
+                iteration + 1
+            );
+            break;
+        }
+
+        iteration += 1;
+        println!("lever: starting iteration {}", iteration);
+        run_placeholder_command(command_path)?;
+
+        if shutdown_flag.load(Ordering::SeqCst) {
+            println!(
+                "lever: shutdown requested during placeholder execution (iteration {})",
+                iteration
+            );
+            break;
+        } else {
+            println!("lever: iteration {} completed", iteration);
+        }
+
+        if let Some(limit) = max_iterations {
+            if iteration >= limit {
+                println!("lever: --loop limit reached ({})", limit);
+                break;
+            }
+        }
+    }
+
+    Ok(())
 }
