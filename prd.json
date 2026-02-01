@@ -1,138 +1,143 @@
 {
   "tasks": [
     {
-      "task_id": "SCHEMA-001",
-      "title": "Inventory current schema usage",
+      "task_id": "LEVER-001",
+      "title": "Audit existing CLI behavior and flags",
       "model": "gpt-5.1-codex-mini",
-      "status": "completed",
+      "status": "unstarted",
       "definition_of_done": [
-        "Reviewed prd.schema.json for current task fields and requirements.",
-        "Checked README.md for schema guidance and examples.",
-        "Located tests or scripts that read or validate task fields."
+        "Reviewed bin/task-agent.sh and bin/ralph-loop.sh for flag parsing and behavior.",
+        "Captured current task selection and loop semantics from scripts and README.",
+        "Identified any implicit defaults (e.g., tasks file paths, prompt defaults)."
       ],
       "recommended": {
-        "approach": "Use rg to find task field usage in bin/ and tests/."
-      },
-      "observability": {
-        "run_attempts": 1,
-        "last_note": "Run 20260130T194742Z-8533 completed",
-        "last_run_id": "20260130T194742Z-8533",
-        "last_update_utc": "2026-01-30T19:50:29Z"
+        "approach": "Use rg across bin/ and README.md to map flags and defaults before coding."
       }
     },
     {
-      "task_id": "SCHEMA-002",
-      "title": "Specify updated task schema details",
+      "task_id": "LEVER-002",
+      "title": "Specify Rust CLI contract and behavior mapping",
       "model": "gpt-5.1-codex-mini",
-      "status": "completed",
+      "status": "unstarted",
       "definition_of_done": [
-        "Drafted the updated task fields and required list from README TODO.",
-        "Documented observability fields and their types/constraints."
+        "Defined flag mapping to existing scripts, including pass-through behavior.",
+        "Documented default tasks file discovery order: prd.json then tasks.json.",
+        "Documented task selection rules and loop semantics, including --loop 0 as continuous."
       ],
       "recommended": {
-        "approach": "Translate README TODO into explicit JSON Schema requirements."
-      },
-      "observability": {
-        "run_attempts": 3,
-        "last_note": "Completed manually to avoid recycling exec bit",
-        "last_run_id": "20260131T004514Z-96087",
-        "last_update_utc": "2026-01-31T00:45:14Z"
+        "approach": "Write a concise CLI spec to guide implementation and tests."
       }
     },
     {
-      "task_id": "SCHEMA-003",
-      "title": "Update prd.schema.json for new task fields",
+      "task_id": "LEVER-003",
+      "title": "Create Rust crate and lever binary scaffold",
       "model": "gpt-5.1-codex-mini",
-      "status": "completed",
+      "status": "unstarted",
       "definition_of_done": [
-        "Added title, definition_of_done, and recommended as required fields.",
-        "Removed assignee from task properties.",
-        "Added observability.last_update_utc and observability.last_run_id."
+        "Added Cargo.toml and src/main.rs for lever binary.",
+        "Configured clap and ctrlc dependencies.",
+        "Binary builds locally with a placeholder command path."
       ],
       "recommended": {
-        "approach": "Keep task additionalProperties aligned with intended strictness."
-      },
-      "observability": {
-        "run_attempts": 1,
-        "last_note": "Run 20260131T005518Z-4583 completed",
-        "last_run_id": "20260131T005518Z-4583",
-        "last_update_utc": "2026-01-31T00:56:55Z"
+        "approach": "Start with a minimal clap parser and a no-op main to validate wiring."
       }
     },
     {
-      "task_id": "SCHEMA-004",
-      "title": "Update README schema guidance and example",
+      "task_id": "LEVER-004",
+      "title": "Implement tasks file discovery and validation",
       "model": "gpt-5.1-codex-mini",
-      "status": "completed",
+      "status": "unstarted",
       "definition_of_done": [
-        "README TODO example reflects the updated task schema.",
-        "Field descriptions and required list match prd.schema.json."
+        "If --tasks is absent, lever searches for prd.json then tasks.json in CWD.",
+        "If neither exists, lever exits with a clear error message and non-zero code.",
+        "Resolved tasks file path is passed into task execution logic."
       ],
       "recommended": {
-        "approach": "Keep example minimal but complete and valid."
-      },
-      "observability": {
-        "run_attempts": 1,
-        "last_note": "Run 20260131T005655Z-6368 completed",
-        "last_run_id": "20260131T005655Z-6368",
-        "last_update_utc": "2026-01-31T00:59:08Z"
+        "approach": "Use std::path checks and centralize resolution into a helper."
       }
     },
     {
-      "task_id": "SCHEMA-005",
-      "title": "Update scripts for schema changes",
+      "task_id": "LEVER-005",
+      "title": "Implement task selection rules",
       "model": "gpt-5.1-codex-mini",
-      "status": "completed",
+      "status": "unstarted",
       "definition_of_done": [
-        "bin/task-agent.sh handles required fields without relying on assignee.",
-        "bin/ralph-loop.sh continues to pass assignee only where needed."
+        "If --task-id is provided, lever verifies the task exists or errors.",
+        "If --task-id is not provided and --loop is not set, lever selects the next non-completed task.",
+        "Selection logic matches existing behavior or is clearly documented if it differs."
       ],
       "recommended": {
-        "approach": "Search for assignee usage and adjust to new schema."
-      },
-      "observability": {
-        "run_attempts": 1,
-        "last_note": "Run 20260201T065514Z-84569 completed",
-        "last_run_id": "20260201T065514Z-84569",
-        "last_update_utc": "2026-02-01T07:03:50Z"
+        "approach": "Parse the tasks JSON and reuse any existing selection rules if present."
       }
     },
     {
-      "task_id": "SCHEMA-006",
-      "title": "Update tests to validate new schema",
+      "task_id": "LEVER-006",
+      "title": "Implement loop semantics and Ctrl-C handling",
       "model": "gpt-5.1-codex-mini",
-      "status": "completed",
+      "status": "unstarted",
       "definition_of_done": [
-        "Test fixtures include newly required fields.",
-        "Schema validation (if present) passes with updated requirements."
+        "--loop with no value runs continuously until Ctrl-C.",
+        "--loop 0 behaves the same as continuous mode.",
+        "--loop N runs exactly N iterations and exits cleanly."
       ],
       "recommended": {
-        "approach": "Adjust tests/test-*.sh fixtures to match updated schema."
-      },
-      "observability": {
-        "run_attempts": 1,
-        "last_note": "Run 20260201T070350Z-94122 completed",
-        "last_run_id": "20260201T070350Z-94122",
-        "last_update_utc": "2026-02-01T07:08:36Z"
+        "approach": "Use an atomic flag for Ctrl-C and check it between iterations."
       }
     },
     {
-      "task_id": "SCHEMA-007",
-      "title": "Verify schema changes and run tests",
+      "task_id": "LEVER-007",
+      "title": "Implement task execution by delegating to task-agent",
       "model": "gpt-5.1-codex-mini",
-      "status": "completed",
+      "status": "unstarted",
       "definition_of_done": [
-        "prd.json validates against prd.schema.json.",
+        "run_once launches the existing task-agent entrypoint with matching flags.",
+        "Exit codes and errors propagate to the Rust process.",
+        "Behavior matches current task-agent output and side effects."
+      ],
+      "recommended": {
+        "approach": "Start with std::process::Command calling bin/task-agent.sh."
+      }
+    },
+    {
+      "task_id": "LEVER-007A",
+      "title": "Human review: validate lever parity with task-agent",
+      "model": "human",
+      "status": "unstarted",
+      "definition_of_done": [
+        "Ran one lever iteration and compared outputs/artifacts to task-agent.",
+        "Verified --loop 1 matches a single run and Ctrl-C stops after iteration.",
+        "Confirmed errors surface with non-zero exit codes."
+      ],
+      "recommended": {
+        "approach": "Run lever against a small tasks file and compare .ralph/ artifacts."
+      }
+    },
+    {
+      "task_id": "LEVER-008",
+      "title": "Update documentation for lever CLI",
+      "model": "gpt-5.1-codex-mini",
+      "status": "unstarted",
+      "definition_of_done": [
+        "README.md documents lever usage, defaults, and loop semantics.",
+        "Examples include continuous loop and fixed iteration loop.",
+        "Any deprecation or wrapper behavior is documented."
+      ],
+      "recommended": {
+        "approach": "Keep changes minimal and consistent with existing README format."
+      }
+    },
+    {
+      "task_id": "LEVER-009",
+      "title": "Add or update tests for lever behavior",
+      "model": "gpt-5.1-codex-mini",
+      "status": "unstarted",
+      "definition_of_done": [
+        "Tests cover tasks file discovery order and missing file errors.",
+        "Tests cover --loop 0 and --loop with no value.",
         "./tests/run.sh passes."
       ],
       "recommended": {
-        "approach": "Validate with a JSON Schema checker before running tests."
-      },
-      "observability": {
-        "run_attempts": 1,
-        "last_note": "Run 20260201T070836Z-98296 completed",
-        "last_run_id": "20260201T070836Z-98296",
-        "last_update_utc": "2026-02-01T07:10:53Z"
+        "approach": "Reuse existing test harness and add focused test scripts."
       }
     }
   ]
