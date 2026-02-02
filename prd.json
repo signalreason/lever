@@ -1,196 +1,185 @@
 {
   "tasks": [
     {
-      "task_id": "LEVER-001",
-      "title": "Audit existing CLI behavior and flags",
+      "task_id": "LEVER-101",
+      "title": "Catalog shell behaviors and exit codes",
       "model": "gpt-5.1-codex-mini",
-      "status": "completed",
+      "status": "unstarted",
       "definition_of_done": [
-        "Reviewed bin/task-agent.sh and bin/ralph-loop.sh for flag parsing and behavior.",
-        "Captured current task selection and loop semantics from scripts and README.",
-        "Identified any implicit defaults (e.g., tasks file paths, prompt defaults)."
+        "Documented all flags, defaults, and exit codes from bin/task-agent.sh and bin/ralph-loop.sh.",
+        "Captured stop-reason semantics (human, blocked, dependencies, no tasks).",
+        "Recorded any implicit behaviors needed for parity (workspace, prompt, logging)."
       ],
       "recommended": {
-        "approach": "Use rg across bin/ and README.md to map flags and defaults before coding."
-      },
-      "observability": {
-        "run_attempts": 1,
-        "last_run_id": "20260201T094927Z-6921",
-        "last_update_utc": "2026-02-01T09:50:10Z",
-        "last_note": "Run 20260201T094927Z-6921 completed"
+        "approach": "Create a concise mapping note to drive Rust parity and tests."
       }
     },
     {
-      "task_id": "LEVER-002",
-      "title": "Specify Rust CLI contract and behavior mapping",
+      "task_id": "LEVER-102",
+      "title": "Add missing CLI flags to lever",
       "model": "gpt-5.1-codex-mini",
-      "status": "completed",
+      "status": "unstarted",
       "definition_of_done": [
-        "Defined flag mapping to existing scripts, including pass-through behavior.",
-        "Documented default tasks file discovery order: prd.json then tasks.json.",
-        "Documented task selection rules and loop semantics, including --loop 0 as continuous."
+        "lever parses --next, --workspace, --assignee, --reset-task, and --delay.",
+        "Flag validation matches shell semantics (required combinations and errors).",
+        "--loop parsing still accepts optional count."
       ],
       "recommended": {
-        "approach": "Write a concise CLI spec to guide implementation and tests."
-      },
-      "observability": {
-        "run_attempts": 3,
-        "last_run_id": "20260201T100033Z-19459",
-        "last_update_utc": "2026-02-01T10:03:45Z",
-        "last_note": "Run 20260201T100033Z-19459 completed"
+        "approach": "Extend clap definitions and add validation helpers before deeper logic changes."
       }
     },
     {
-      "task_id": "LEVER-003",
-      "title": "Create Rust crate and lever binary scaffold",
+      "task_id": "LEVER-103",
+      "title": "Resolve workspace, tasks, and prompt paths in Rust",
       "model": "gpt-5.1-codex-mini",
-      "status": "completed",
+      "status": "unstarted",
       "definition_of_done": [
-        "Added Cargo.toml and src/main.rs for lever binary.",
-        "Configured clap and ctrlc dependencies.",
-        "Binary builds locally with a placeholder command path."
+        "Tasks file discovery uses prd.json then tasks.json when --tasks is absent.",
+        "--workspace is honored and becomes the base for relative paths.",
+        "Prompt and tasks files are validated for existence with clear errors."
       ],
       "recommended": {
-        "approach": "Start with a minimal clap parser and a no-op main to validate wiring."
-      },
-      "observability": {
-        "run_attempts": 1,
-        "last_run_id": "20260201T100345Z-22114",
-        "last_update_utc": "2026-02-01T10:06:43Z",
-        "last_note": "Run 20260201T100345Z-22114 completed"
+        "approach": "Centralize path resolution so all callers use the same base directory."
       }
     },
     {
-      "task_id": "LEVER-004",
-      "title": "Implement tasks file discovery and validation",
+      "task_id": "LEVER-104",
+      "title": "Implement task selection and stop reasons",
       "model": "gpt-5.1-codex-mini",
-      "status": "completed",
+      "status": "unstarted",
       "definition_of_done": [
-        "If --tasks is absent, lever searches for prd.json then tasks.json in CWD.",
-        "If neither exists, lever exits with a clear error message and non-zero code.",
-        "Resolved tasks file path is passed into task execution logic."
+        "--task-id selects a specific task or errors if missing.",
+        "--next selects the first task with status!=completed and model!=human.",
+        "Exit codes and stop reasons match ralph-loop behavior for human, blocked, or unmet dependencies."
       ],
       "recommended": {
-        "approach": "Use std::path checks and centralize resolution into a helper."
-      },
-      "observability": {
-        "run_attempts": 1,
-        "last_run_id": "20260201T100643Z-24711",
-        "last_update_utc": "2026-02-01T10:08:39Z",
-        "last_note": "Run 20260201T100643Z-24711 completed"
+        "approach": "Introduce a stop-reason enum with explicit exit code mapping."
       }
     },
     {
-      "task_id": "LEVER-005",
-      "title": "Implement task selection rules",
+      "task_id": "LEVER-105",
+      "title": "Port task metadata validation",
       "model": "gpt-5.1-codex-mini",
-      "status": "completed",
+      "status": "unstarted",
       "definition_of_done": [
-        "If --task-id is provided, lever verifies the task exists or errors.",
-        "If --task-id is not provided and --loop is not set, lever selects the next non-completed task.",
-        "Selection logic matches existing behavior or is clearly documented if it differs."
+        "Selected task requires title, definition_of_done entries, and recommended.approach.",
+        "Missing metadata results in a clear error and non-zero exit.",
+        "Behavior matches bin/task-agent.sh validation."
       ],
       "recommended": {
-        "approach": "Parse the tasks JSON and reuse any existing selection rules if present."
-      },
-      "observability": {
-        "last_run_id": "20260201T100839Z-26548",
-        "last_update_utc": "2026-02-01T10:14:37Z",
-        "last_note": "Run 20260201T100839Z-26548 completed"
+        "approach": "Validate task fields before any git or codex side effects."
       }
     },
     {
-      "task_id": "LEVER-006",
-      "title": "Implement loop semantics and Ctrl-C handling",
+      "task_id": "LEVER-106",
+      "title": "Port rate limit bookkeeping",
       "model": "gpt-5.1-codex-mini",
-      "status": "completed",
+      "status": "unstarted",
       "definition_of_done": [
-        "--loop with no value runs continuously until Ctrl-C.",
-        "--loop 0 behaves the same as continuous mode.",
-        "--loop N runs exactly N iterations and exits cleanly."
+        "lever reads and writes .ralph/rate_limit.json consistently with shell behavior.",
+        "Rate limit window and sleep behavior are preserved.",
+        "Errors are surfaced if rate limit state cannot be updated."
       ],
       "recommended": {
-        "approach": "Use an atomic flag for Ctrl-C and check it between iterations."
-      },
-      "observability": {
-        "run_attempts": 2,
-        "last_run_id": "20260201T102511Z-46939",
-        "last_update_utc": "2026-02-01T10:27:02Z",
-        "last_note": "Run 20260201T102511Z-46939 completed"
+        "approach": "Match the JSON shape and time calculations used by the bash script."
       }
     },
     {
-      "task_id": "LEVER-007",
-      "title": "Implement task execution by delegating to task-agent",
+      "task_id": "LEVER-107",
+      "title": "Port git safety and workspace setup",
       "model": "gpt-5.1-codex-mini",
-      "status": "completed",
+      "status": "unstarted",
       "definition_of_done": [
-        "run_once launches the existing task-agent entrypoint with matching flags.",
-        "Exit codes and errors propagate to the Rust process.",
-        "Behavior matches current task-agent output and side effects."
+        "lever verifies git repo and captures original branch/HEAD.",
+        "Dirty working tree is stashed and restored per task-agent behavior.",
+        "Branch selection/creation for tasks mirrors the shell script."
       ],
       "recommended": {
-        "approach": "Start with std::process::Command calling bin/task-agent.sh."
-      },
-      "observability": {
-        "run_attempts": 1,
-        "last_run_id": "20260201T171045Z-78831",
-        "last_update_utc": "2026-02-01T17:16:02Z",
-        "last_note": "Run 20260201T171045Z-78831 completed"
+        "approach": "Implement git operations with Command calls and explicit error messages."
       }
     },
     {
-      "task_id": "LEVER-007A",
-      "title": "Human review: validate lever parity with task-agent",
-      "model": "human",
-      "status": "completed",
+      "task_id": "LEVER-108",
+      "title": "Port codex invocation and task status updates",
+      "model": "gpt-5.1-codex-mini",
+      "status": "unstarted",
       "definition_of_done": [
-        "Ran one lever iteration and compared outputs/artifacts to task-agent.",
-        "Verified --loop 1 matches a single run and Ctrl-C stops after iteration.",
-        "Confirmed errors surface with non-zero exit codes."
+        "lever constructs the prompt and invokes codex with the same inputs as the shell script.",
+        "Task status/observability fields are updated per current behavior.",
+        "Exit codes propagate and map to the correct stop reasons."
       ],
       "recommended": {
-        "approach": "Run lever against a small tasks file and compare .ralph/ artifacts."
+        "approach": "Translate the bash sequence into structured Rust steps with explicit error handling."
       }
     },
     {
-      "task_id": "LEVER-008",
-      "title": "Update documentation for lever CLI",
+      "task_id": "LEVER-109",
+      "title": "Implement loop driver in Rust",
       "model": "gpt-5.1-codex-mini",
-      "status": "completed",
+      "status": "unstarted",
       "definition_of_done": [
-        "README.md documents lever usage, defaults, and loop semantics.",
-        "Examples include continuous loop and fixed iteration loop.",
-        "Any deprecation or wrapper behavior is documented."
+        "--loop runs continuously when no count is provided (or 0) and stops on Ctrl-C.",
+        "--loop N runs exactly N iterations and honors --delay between cycles.",
+        "Loop exits with correct stop reason and exit code."
       ],
       "recommended": {
-        "approach": "Keep changes minimal and consistent with existing README format."
-      },
-      "observability": {
-        "run_attempts": 1,
-        "last_run_id": "20260201T172428Z-91701",
-        "last_update_utc": "2026-02-01T17:27:14Z",
-        "last_note": "Run 20260201T172428Z-91701 completed"
+        "approach": "Use an atomic flag for Ctrl-C and check between iterations."
       }
     },
     {
-      "task_id": "LEVER-009",
-      "title": "Add or update tests for lever behavior",
+      "task_id": "LEVER-110",
+      "title": "Remove shell script dependency",
       "model": "gpt-5.1-codex-mini",
-      "status": "completed",
+      "status": "unstarted",
       "definition_of_done": [
-        "Tests cover tasks file discovery order and missing file errors.",
-        "Tests cover --loop 0 and --loop with no value.",
+        "lever no longer calls bin/task-agent.sh or bin/ralph-loop.sh.",
+        "bin/task-agent.sh and bin/ralph-loop.sh are removed or clearly deprecated.",
+        "Any references to those scripts are cleaned from code and tests."
+      ],
+      "recommended": {
+        "approach": "Delete scripts once Rust parity is verified to avoid regressions."
+      }
+    },
+    {
+      "task_id": "LEVER-111",
+      "title": "Update documentation for shell removal",
+      "model": "gpt-5.1-codex-mini",
+      "status": "unstarted",
+      "definition_of_done": [
+        "README.md documents lever as the only entry point and removes script install steps.",
+        "Loop semantics and exit codes are documented.",
+        "Docs reference the new flags and defaults."
+      ],
+      "recommended": {
+        "approach": "Keep docs concise and align wording with existing README style."
+      }
+    },
+    {
+      "task_id": "LEVER-112",
+      "title": "Update tests to target lever only",
+      "model": "gpt-5.1-codex-mini",
+      "status": "unstarted",
+      "definition_of_done": [
+        "tests/ scripts call lever directly instead of shell wrappers.",
+        "Tests cover task discovery, loop counts, and stop reasons.",
         "./tests/run.sh passes."
       ],
       "recommended": {
-        "approach": "Reuse existing test harness and add focused test scripts."
-      },
-      "observability": {
-        "run_attempts": 1,
-        "last_run_id": "20260201T172804Z-95997",
-        "last_update_utc": "2026-02-01T17:31:15Z",
-        "last_note": "Run 20260201T172804Z-95997 completed"
+        "approach": "Replace task-agent/ralph-loop references and add missing loop cases."
+      }
+    },
+    {
+      "task_id": "LEVER-113",
+      "title": "Add Rust unit tests for selection and exit codes",
+      "model": "gpt-5.1-codex-mini",
+      "status": "unstarted",
+      "definition_of_done": [
+        "Unit tests cover task selection with --task-id, --next, and default.",
+        "Unit tests cover stop-reason to exit-code mapping.",
+        "cargo test passes."
+      ],
+      "recommended": {
+        "approach": "Keep tests focused on pure helpers to avoid spawning external commands."
       }
     }
   ]
