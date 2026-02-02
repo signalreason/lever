@@ -124,7 +124,7 @@
       "task_id": "LEVER-107",
       "title": "Port git safety and workspace setup",
       "model": "gpt-5.2-codex",
-      "status": "unstarted",
+      "status": "completed",
       "definition_of_done": [
         "lever verifies git repo and captures original branch/HEAD.",
         "Dirty working tree is stashed and restored per task-agent behavior.",
@@ -132,6 +132,12 @@
       ],
       "recommended": {
         "approach": "Implement git operations with Command calls and explicit error messages."
+      },
+      "observability": {
+        "run_attempts": 1,
+        "last_run_id": "20260202T014856Z-36806",
+        "last_update_utc": "2026-02-02T01:57:41Z",
+        "last_note": "Run 20260202T014856Z-36806 completed"
       }
     },
     {

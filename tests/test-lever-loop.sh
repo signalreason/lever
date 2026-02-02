@@ -5,6 +5,7 @@ TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$TEST_DIR/helpers.sh"
 
 require_cmd cargo
+require_cmd git
 
 cargo build --quiet
 
@@ -36,6 +37,8 @@ cat > "$workspace/prd.json" <<'JSON'
   ]
 }
 JSON
+
+init_git_repo "$workspace"
 
 stub="$stub_dir/loop-stub"
 cat > "$stub" <<'EOF'

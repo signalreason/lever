@@ -6,6 +6,7 @@ TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$TEST_DIR/helpers.sh"
 
 require_cmd cargo
+require_cmd git
 
 repo_dir="$(make_temp_dir)"
 trap 'rm -rf "$repo_dir"' EXIT
@@ -41,6 +42,8 @@ cat > "$repo_dir/prd.json" <<'JSON'
   ]
 }
 JSON
+
+init_git_repo "$repo_dir"
 
 output="$(
   cargo run --quiet --manifest-path "$TEST_DIR/../Cargo.toml" \

@@ -12,3 +12,18 @@ require_cmd() {
     exit 1
   fi
 }
+
+init_git_repo() {
+  local dir="$1"
+  (
+    cd "$dir"
+    git init -b main >/dev/null
+    if [[ -z "$(ls -A | grep -v '^\.git$' || true)" ]]; then
+      printf '%s\n' "Test repo" > README.md
+    fi
+    git add -A
+    GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.com \
+      GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.com \
+      git commit -m "init" >/dev/null
+  )
+}

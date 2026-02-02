@@ -6,6 +6,7 @@ source "$TEST_DIR/helpers.sh"
 
 require_cmd cargo
 require_cmd true
+require_cmd git
 
 cleanup_dirs=()
 cleanup() {
@@ -64,6 +65,8 @@ JSON
 }
 JSON
 
+  init_git_repo "$workspace"
+
   local expected_tasks_path
   expected_tasks_path="$(cd "$workspace" && pwd -P)/prd.json"
 
@@ -91,6 +94,7 @@ run_missing_discovery_error() {
   local workspace
   workspace="$(make_temp_dir)"
   register_dir "$workspace"
+  init_git_repo "$workspace"
 
   set +e
   local output
@@ -119,6 +123,7 @@ run_missing_explicit_file_error() {
   local workspace
   workspace="$(make_temp_dir)"
   register_dir "$workspace"
+  init_git_repo "$workspace"
 
   set +e
   local output

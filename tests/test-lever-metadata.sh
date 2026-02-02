@@ -6,6 +6,7 @@ TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$TEST_DIR/helpers.sh"
 
 require_cmd cargo
+require_cmd git
 
 repo_dir="$(make_temp_dir)"
 trap 'rm -rf "$repo_dir"' EXIT
@@ -38,6 +39,8 @@ set -euo pipefail
 : > "$MARKER_FILE"
 EOF2
 chmod +x "$repo_dir/stub-cmd"
+
+init_git_repo "$repo_dir"
 
 set +e
 output="$(MARKER_FILE="$marker_file" cargo run --quiet --manifest-path "$TEST_DIR/../Cargo.toml" \
