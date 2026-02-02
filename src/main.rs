@@ -15,6 +15,8 @@ use std::{
 use clap::{value_parser, Parser};
 use serde_json::Value;
 
+mod rate_limit;
+
 const DEFAULT_COMMAND_PATH: &str = "bin/task-agent.sh";
 const TASK_FILE_SEARCH_ORDER: [&str; 2] = ["prd.json", "tasks.json"];
 
