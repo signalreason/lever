@@ -23,8 +23,15 @@ cat > "$workspace/prd.json" <<'JSON'
   "tasks": [
     {
       "task_id": "loop-task",
+      "title": "Loop task",
       "model": "gpt-5.1-codex-mini",
-      "status": "unstarted"
+      "status": "unstarted",
+      "definition_of_done": [
+        "Iterate loop calls"
+      ],
+      "recommended": {
+        "approach": "Exercise loop iteration behavior."
+      }
     }
   ]
 }

@@ -84,7 +84,7 @@
       "task_id": "LEVER-105",
       "title": "Port task metadata validation",
       "model": "gpt-5.2-codex",
-      "status": "unstarted",
+      "status": "completed",
       "definition_of_done": [
         "Selected task requires title, definition_of_done entries, and recommended.approach.",
         "Missing metadata results in a clear error and non-zero exit.",
@@ -92,6 +92,12 @@
       ],
       "recommended": {
         "approach": "Validate task fields before any git or codex side effects."
+      },
+      "observability": {
+        "run_attempts": 1,
+        "last_run_id": "20260202T010140Z-721",
+        "last_update_utc": "2026-02-02T01:06:17Z",
+        "last_note": "Run 20260202T010140Z-721 completed"
       }
     },
     {

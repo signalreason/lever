@@ -13,17 +13,17 @@ use std::{
 };
 
 use clap::{value_parser, Parser};
-use serde::Deserialize;
 use serde_json::Value;
 
 const DEFAULT_COMMAND_PATH: &str = "bin/task-agent.sh";
 const TASK_FILE_SEARCH_ORDER: [&str; 2] = ["prd.json", "tasks.json"];
 
-#[derive(Debug, Clone, Deserialize)]
-struct Task {
+#[derive(Debug, Clone)]
+struct TaskRecord {
     task_id: String,
     status: Option<String>,
     model: Option<String>,
+    raw: Value,
 }
 
 type DynError = Box<dyn Error + Send + Sync + 'static>;
@@ -81,6 +81,31 @@ impl Display for StopReasonError {
 }
 
 impl std::error::Error for StopReasonError {}
+
+#[derive(Debug)]
+struct TaskMetadataError {
+    task_id: String,
+    missing: Vec<&'static str>,
+}
+
+impl TaskMetadataError {
+    fn exit_code(&self) -> i32 {
+        2
+    }
+}
+
+impl Display for TaskMetadataError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Task {} missing required metadata: {}",
+            self.task_id,
+            self.missing.join(", ")
+        )
+    }
+}
+
+impl std::error::Error for TaskMetadataError {}
 
 #[derive(Debug, Clone)]
 enum StopReason {
@@ -239,6 +264,12 @@ fn main() -> Result<(), DynError> {
     let selecting_next = task_id.is_none() && matches!(loop_mode, LoopMode::Single);
     let selected_task =
         determine_selected_task(&tasks, task_id.as_deref(), selecting_next, &tasks_path)?;
+    if let Some(task) = &selected_task {
+        if let Err(err) = validate_task_metadata(task) {
+            eprintln!("{}", err);
+            std::process::exit(err.exit_code());
+        }
+    }
 
     let shutdown_flag = Arc::new(AtomicBool::new(false));
     {
@@ -289,13 +320,17 @@ fn main() -> Result<(), DynError> {
             eprintln!("{}", stop_err);
             std::process::exit(stop_err.exit_code());
         }
+        if let Some(metadata_err) = err.downcast_ref::<TaskMetadataError>() {
+            eprintln!("{}", metadata_err);
+            std::process::exit(metadata_err.exit_code());
+        }
         return Err(err);
     }
 
     Ok(())
 }
 
-fn load_tasks(path: &Path) -> Result<Vec<Task>, DynError> {
+fn load_tasks(path: &Path) -> Result<Vec<TaskRecord>, DynError> {
     let raw = fs::read_to_string(path).map_err(|err| {
         DynError::from(format!(
             "Failed to read tasks file {}: {}",
@@ -314,15 +349,31 @@ fn load_tasks(path: &Path) -> Result<Vec<Task>, DynError> {
         Value::Array(items) => {
             let mut tasks = Vec::with_capacity(items.len());
             for (index, item) in items.into_iter().enumerate() {
-                let task: Task = serde_json::from_value(item).map_err(|err| {
-                    format!(
-                        "Failed to decode task at index {} in {}: {}",
-                        index,
-                        path.display(),
-                        err
-                    )
-                })?;
-                tasks.push(task);
+                let task_id = item
+                    .get("task_id")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+                    .ok_or_else(|| {
+                        format!(
+                            "Task at index {} in {} is missing task_id",
+                            index,
+                            path.display()
+                        )
+                    })?;
+                let status = item
+                    .get("status")
+                    .and_then(Value::as_str)
+                    .map(str::to_string);
+                let model = item
+                    .get("model")
+                    .and_then(Value::as_str)
+                    .map(str::to_string);
+                tasks.push(TaskRecord {
+                    task_id,
+                    status,
+                    model,
+                    raw: item,
+                });
             }
             Ok(tasks)
         }
@@ -335,11 +386,11 @@ fn load_tasks(path: &Path) -> Result<Vec<Task>, DynError> {
 }
 
 fn determine_selected_task(
-    tasks: &[Task],
+    tasks: &[TaskRecord],
     explicit_task_id: Option<&str>,
     should_select_next: bool,
     tasks_path: &Path,
-) -> Result<Option<Task>, DynError> {
+) -> Result<Option<TaskRecord>, DynError> {
     if let Some(task_id) = explicit_task_id {
         let found = tasks
             .iter()
@@ -365,13 +416,13 @@ fn determine_selected_task(
     Ok(None)
 }
 
-fn select_next_non_completed(tasks: &[Task]) -> Option<&Task> {
+fn select_next_non_completed(tasks: &[TaskRecord]) -> Option<&TaskRecord> {
     tasks
         .iter()
         .find(|task| !status_is_completed(task.status.as_deref()))
 }
 
-fn select_next_runnable(tasks: &[Task]) -> Option<&Task> {
+fn select_next_runnable(tasks: &[TaskRecord]) -> Option<&TaskRecord> {
     tasks.iter().find(|task| {
         !status_is_completed(task.status.as_deref()) && !model_is_human(task.model.as_deref())
     })
@@ -586,6 +637,9 @@ fn run_loop_iterations(
             let tasks = load_tasks(&config.tasks_path)?;
             let next = select_next_non_completed(&tasks);
             if let Some(task) = next {
+                if let Err(err) = validate_task_metadata(task) {
+                    return Err(Box::new(err));
+                }
                 if model_is_human(task.model.as_deref()) {
                     return Err(Box::new(StopReasonError {
                         reason: StopReason::Human {
@@ -711,6 +765,58 @@ fn run_once(
     }
 
     Ok(status)
+}
+
+fn validate_task_metadata(task: &TaskRecord) -> Result<(), TaskMetadataError> {
+    let title_valid = matches!(
+        task.raw.get("title"),
+        Some(Value::String(value)) if !value.is_empty()
+    );
+
+    let dod_valid = match task.raw.get("definition_of_done") {
+        Some(Value::Array(items)) => {
+            !items.is_empty()
+                && items.iter().all(|item| match item {
+                    Value::String(value) => !value.is_empty(),
+                    _ => false,
+                })
+        }
+        _ => false,
+    };
+
+    let recommended_valid = match task.raw.get("recommended") {
+        Some(Value::Object(map)) => {
+            if map.len() != 1 {
+                false
+            } else {
+                matches!(
+                    map.get("approach"),
+                    Some(Value::String(value)) if !value.is_empty()
+                )
+            }
+        }
+        _ => false,
+    };
+
+    let mut missing = Vec::new();
+    if !title_valid {
+        missing.push("title");
+    }
+    if !dod_valid {
+        missing.push("definition_of_done");
+    }
+    if !recommended_valid {
+        missing.push("recommended.approach");
+    }
+
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        Err(TaskMetadataError {
+            task_id: task.task_id.clone(),
+            missing,
+        })
+    }
 }
 
 impl ExecutionConfig {

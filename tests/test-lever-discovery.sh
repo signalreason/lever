@@ -31,8 +31,15 @@ run_discovery_order_test() {
   "tasks": [
     {
       "task_id": "discovery-prd-task",
+      "title": "Discovery PRD task",
       "status": "unstarted",
-      "model": "gpt-5.1-codex-mini"
+      "model": "gpt-5.1-codex-mini",
+      "definition_of_done": [
+        "Exercise task discovery order"
+      ],
+      "recommended": {
+        "approach": "Select the prd.json entry when available."
+      }
     }
   ]
 }
@@ -43,8 +50,15 @@ JSON
   "tasks": [
     {
       "task_id": "discovery-tasks-task",
+      "title": "Discovery tasks.json task",
       "status": "unstarted",
-      "model": "gpt-5.1-codex-mini"
+      "model": "gpt-5.1-codex-mini",
+      "definition_of_done": [
+        "Exercise task discovery order"
+      ],
+      "recommended": {
+        "approach": "Select the prd.json entry when available."
+      }
     }
   ]
 }
