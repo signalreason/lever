@@ -1,7 +1,7 @@
 use std::{
     error::Error,
     fs,
-    path::{Path, PathBuf},
+    path::Path,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -252,6 +252,7 @@ fn is_recent(entry: &RateLimitEntry, now: f64, window_secs: f64) -> bool {
 mod tests {
     use super::*;
     use std::fs;
+    use std::path::PathBuf;
 
     fn temp_path(name: &str) -> PathBuf {
         let mut path = std::env::temp_dir();

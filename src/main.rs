@@ -16,6 +16,8 @@ use clap::{value_parser, Parser};
 use serde_json::Value;
 
 mod rate_limit;
+mod task_agent;
+mod task_metadata;
 
 const DEFAULT_COMMAND_PATH: &str = "bin/task-agent.sh";
 const TASK_FILE_SEARCH_ORDER: [&str; 2] = ["prd.json", "tasks.json"];
@@ -84,30 +86,7 @@ impl Display for StopReasonError {
 
 impl std::error::Error for StopReasonError {}
 
-#[derive(Debug)]
-struct TaskMetadataError {
-    task_id: String,
-    missing: Vec<&'static str>,
-}
-
-impl TaskMetadataError {
-    fn exit_code(&self) -> i32 {
-        2
-    }
-}
-
-impl Display for TaskMetadataError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "Task {} missing required metadata: {}",
-            self.task_id,
-            self.missing.join(", ")
-        )
-    }
-}
-
-impl std::error::Error for TaskMetadataError {}
+use crate::task_metadata::{validate_task_metadata, TaskMetadataError};
 
 #[derive(Debug, Clone)]
 enum StopReason {
@@ -267,7 +246,7 @@ fn main() -> Result<(), DynError> {
     let selected_task =
         determine_selected_task(&tasks, task_id.as_deref(), selecting_next, &tasks_path)?;
     if let Some(task) = &selected_task {
-        if let Err(err) = validate_task_metadata(task) {
+        if let Err(err) = validate_task_metadata(&task.task_id, &task.raw) {
             eprintln!("{}", err);
             std::process::exit(err.exit_code());
         }
@@ -639,7 +618,7 @@ fn run_loop_iterations(
             let tasks = load_tasks(&config.tasks_path)?;
             let next = select_next_non_completed(&tasks);
             if let Some(task) = next {
-                if let Err(err) = validate_task_metadata(task) {
+                if let Err(err) = validate_task_metadata(&task.task_id, &task.raw) {
                     return Err(Box::new(err));
                 }
                 if model_is_human(task.model.as_deref()) {
@@ -757,6 +736,22 @@ fn run_once(
     allow_next: bool,
     shutdown_flag: &AtomicBool,
 ) -> Result<ExitStatus, DynError> {
+    if is_internal_task_agent(&config.command_path) {
+        let agent_config = task_agent::TaskAgentConfig {
+            tasks_path: config.tasks_path.clone(),
+            prompt_path: config.prompt.clone(),
+            workspace: config.workspace.clone(),
+            reset_task: config.reset_task,
+            explicit_task_id: config.explicit_task_id.clone(),
+        };
+        let exit_code = task_agent::run_task_agent(&agent_config, task_id_override, allow_next)?;
+        let status = exit_status_from_code(exit_code);
+        if shutdown_flag.load(Ordering::SeqCst) && matches!(status.code(), Some(130)) {
+            return Ok(status);
+        }
+        return Ok(status);
+    }
+
     let mut command = Command::new(&config.command_path);
     command.args(config.task_agent_args(task_id_override, allow_next));
     command.current_dir(&config.workspace);
@@ -769,55 +764,20 @@ fn run_once(
     Ok(status)
 }
 
-fn validate_task_metadata(task: &TaskRecord) -> Result<(), TaskMetadataError> {
-    let title_valid = matches!(
-        task.raw.get("title"),
-        Some(Value::String(value)) if !value.is_empty()
-    );
+fn is_internal_task_agent(path: &Path) -> bool {
+    path == Path::new("internal")
+}
 
-    let dod_valid = match task.raw.get("definition_of_done") {
-        Some(Value::Array(items)) => {
-            !items.is_empty()
-                && items.iter().all(|item| match item {
-                    Value::String(value) => !value.is_empty(),
-                    _ => false,
-                })
-        }
-        _ => false,
-    };
-
-    let recommended_valid = match task.raw.get("recommended") {
-        Some(Value::Object(map)) => {
-            if map.len() != 1 {
-                false
-            } else {
-                matches!(
-                    map.get("approach"),
-                    Some(Value::String(value)) if !value.is_empty()
-                )
-            }
-        }
-        _ => false,
-    };
-
-    let mut missing = Vec::new();
-    if !title_valid {
-        missing.push("title");
+fn exit_status_from_code(code: i32) -> ExitStatus {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::ExitStatusExt;
+        ExitStatus::from_raw(code << 8)
     }
-    if !dod_valid {
-        missing.push("definition_of_done");
-    }
-    if !recommended_valid {
-        missing.push("recommended.approach");
-    }
-
-    if missing.is_empty() {
-        Ok(())
-    } else {
-        Err(TaskMetadataError {
-            task_id: task.task_id.clone(),
-            missing,
-        })
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::ExitStatusExt;
+        ExitStatus::from_raw(code as u32)
     }
 }
 
