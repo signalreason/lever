@@ -31,7 +31,7 @@ type DynError = Box<dyn Error + Send + Sync + 'static>;
 struct ExecutionConfig {
     command_path: PathBuf,
     tasks_path: PathBuf,
-    prompt: Option<PathBuf>,
+    prompt: PathBuf,
     explicit_task_id: Option<String>,
     workspace: PathBuf,
     assignee: Option<String>,
@@ -177,9 +177,13 @@ fn main() -> Result<(), DynError> {
         command_path,
     } = args;
 
-    let workspace = resolve_workspace(workspace)?;
-    let tasks_path = resolve_tasks_path(tasks, &workspace)?;
-    let command_path = resolve_command_path(command_path, &workspace)?;
+    let resolved = resolve_paths(workspace, tasks, prompt, command_path)?;
+    let ResolvedPaths {
+        workspace,
+        tasks_path,
+        prompt_path,
+        command_path,
+    } = resolved;
     let tasks = load_tasks(&tasks_path)?;
     let loop_mode = resolve_loop_mode(loop_count);
     let selecting_next = task_id.is_none() && matches!(loop_mode, LoopMode::Single);
@@ -195,15 +199,10 @@ fn main() -> Result<(), DynError> {
         .map_err(DynError::from)?;
     }
 
-    let prompt_label = prompt
-        .as_ref()
-        .map(|p| p.display().to_string())
-        .unwrap_or_else(|| "unset".into());
-
     println!(
         "lever: tasks={} prompt={} command={}",
         tasks_path.display(),
-        prompt_label,
+        prompt_path.display(),
         command_path.display()
     );
 
@@ -223,7 +222,7 @@ fn main() -> Result<(), DynError> {
     let exec_config = ExecutionConfig {
         command_path,
         tasks_path: tasks_path.clone(),
-        prompt: prompt.clone(),
+        prompt: prompt_path.clone(),
         explicit_task_id: task_id.clone(),
         workspace: workspace.clone(),
         assignee,
@@ -357,6 +356,31 @@ fn resolve_tasks_path(tasks_arg: Option<PathBuf>, workspace: &Path) -> Result<Pa
     }
 }
 
+struct ResolvedPaths {
+    workspace: PathBuf,
+    tasks_path: PathBuf,
+    prompt_path: PathBuf,
+    command_path: PathBuf,
+}
+
+fn resolve_paths(
+    workspace_arg: Option<PathBuf>,
+    tasks_arg: Option<PathBuf>,
+    prompt_arg: Option<PathBuf>,
+    command_path_arg: PathBuf,
+) -> Result<ResolvedPaths, DynError> {
+    let workspace = resolve_workspace(workspace_arg)?;
+    let tasks_path = resolve_tasks_path(tasks_arg, &workspace)?;
+    let prompt_path = resolve_prompt_path(prompt_arg, &workspace)?;
+    let command_path = resolve_command_path(command_path_arg, &workspace)?;
+    Ok(ResolvedPaths {
+        workspace,
+        tasks_path,
+        prompt_path,
+        command_path,
+    })
+}
+
 fn resolve_workspace(workspace_arg: Option<PathBuf>) -> Result<PathBuf, DynError> {
     let candidate = workspace_arg.unwrap_or_else(|| PathBuf::from("."));
     if candidate.is_dir() {
@@ -379,6 +403,25 @@ fn resolve_relative_to_workspace(path: PathBuf, workspace: &Path) -> PathBuf {
     } else {
         workspace.join(path)
     }
+}
+
+fn resolve_prompt_path(prompt_arg: Option<PathBuf>, workspace: &Path) -> Result<PathBuf, DynError> {
+    let candidate = match prompt_arg {
+        Some(explicit) => resolve_relative_to_workspace(explicit, workspace),
+        None => default_prompt_path()?,
+    };
+
+    if candidate.is_file() {
+        canonicalize_existing_path(candidate)
+    } else {
+        Err(format!("Prompt file not found: {}", candidate.display()).into())
+    }
+}
+
+fn default_prompt_path() -> Result<PathBuf, DynError> {
+    let home = std::env::var_os("HOME")
+        .ok_or_else(|| "HOME environment variable is not set; cannot resolve default prompt file")?;
+    Ok(PathBuf::from(home).join(".prompts/autonomous-senior-engineer.prompt.md"))
 }
 
 fn resolve_command_path(path: PathBuf, workspace: &Path) -> Result<PathBuf, DynError> {
@@ -525,11 +568,8 @@ impl ExecutionConfig {
         args.push(self.tasks_path.clone().into_os_string());
         args.push("--workspace".into());
         args.push(self.workspace.clone().into_os_string());
-
-        if let Some(prompt) = &self.prompt {
-            args.push("--prompt".into());
-            args.push(prompt.clone().into_os_string());
-        }
+        args.push("--prompt".into());
+        args.push(self.prompt.clone().into_os_string());
 
         if let Some(assignee) = &self.assignee {
             args.push("--assignee".into());
