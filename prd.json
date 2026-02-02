@@ -4,7 +4,7 @@
       "task_id": "LEVER-101",
       "title": "Catalog shell behaviors and exit codes",
       "model": "gpt-5.1-codex-mini",
-      "status": "unstarted",
+      "status": "completed",
       "definition_of_done": [
         "Documented all flags, defaults, and exit codes from bin/task-agent.sh and bin/ralph-loop.sh.",
         "Captured stop-reason semantics (human, blocked, dependencies, no tasks).",
@@ -12,6 +12,12 @@
       ],
       "recommended": {
         "approach": "Create a concise mapping note to drive Rust parity and tests."
+      },
+      "observability": {
+        "run_attempts": 1,
+        "last_run_id": "20260202T002842Z-67102",
+        "last_update_utc": "2026-02-02T00:30:25Z",
+        "last_note": "Run 20260202T002842Z-67102 completed"
       }
     },
     {
