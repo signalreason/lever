@@ -1,14 +1,14 @@
 # Product Requirements Document: Lever CLI (Rust)
 
 ## Overview
-Unify the existing `task-agent` and `ralph-loop` entrypoints into a single Rust binary named `lever`. The new CLI defaults to `task-agent` behavior (single iteration) and optionally runs in loop mode when `--loop` is provided. The goal is to provide a single, ergonomic interface while preserving existing behavior, flags, and output semantics.
+Move the complete Ralph loop and task agent behavior into the Rust `lever` binary so it can run from any repo without relying on `./bin/task-agent.sh` or `./bin/ralph-loop.sh`. The CLI should preserve current semantics, flags, and output as closely as possible while removing the shell script dependency.
 
 ## Goals
 - Deliver a single Rust binary `lever` that covers the behavior of both `task-agent` and `ralph-loop`.
 - Default behavior is a single task-agent iteration.
 - `--loop` runs multiple iterations (or continuous loop) and stops on Ctrl-C.
 - Preserve existing user workflows and flags as closely as possible.
-- Keep compatibility with current bash scripts (initially via delegation or full port, depending on scope).
+- Remove reliance on shell scripts so `lever` can be executed from any repo/location.
 
 ## Non-Goals
 - Rewriting Codex CLI behavior or internal prompts.
@@ -30,14 +30,18 @@ Unify the existing `task-agent` and `ralph-loop` entrypoints into a single Rust 
 ### Core Behavior
 - Default: one iteration, equivalent to `task-agent`.
 - Loop mode: `--loop N` runs exactly `N` iterations; stop early on Ctrl-C.
-- (Optional extension, if approved) `--loop` with no value runs until Ctrl-C.
+- `--loop` with no value runs until Ctrl-C.
 
 ### Arguments & Flags
 - `--tasks <PATH>` (optional): path to tasks JSON file. If not provided, look for `prd.json` or `tasks.json` in the current directory, in that order, and use the first one found. If neither exists, exit with an error.
 - `--task-id <ID>` (optional): if provided, run that task from the tasks file.
+- `--next` (optional): run the next task with `status != completed` and `model != human`.
 - `--prompt <PATH>`: prompt template file.
+- `--workspace <PATH>`: repo directory to run in (default: current directory).
+- `--assignee <NAME>`: log tag only (not persisted to tasks).
+- `--reset-task`: reset attempt counters/status for the selected task before running.
+- `--delay <SECONDS>`: pause between loop iterations (from ralph-loop).
 - `--loop [N]`: run loop mode continuously if `N` is omitted; run exactly `N` iterations if provided (e.g., `--loop 3`).
-- Pass through any other flags currently supported by `task-agent`/`ralph-loop`.
 
 ### Exit Codes
 - `0` on successful completion of the requested iterations.
@@ -45,11 +49,16 @@ Unify the existing `task-agent` and `ralph-loop` entrypoints into a single Rust 
 
 ## Functional Requirements
 1. **Tasks file discovery**: if `--tasks` is not given, search for `prd.json` then `tasks.json` in the current directory and use the first one found; error if neither exists.
-2. **Task selection**:\n+   - If `--task-id` is given, run that task (error if not found).\n+   - If `--task-id` is not given and `--loop` is not provided, run the next task that is not in `completed` status.\n+3. **Single iteration**: runs `task-agent` logic exactly once.
-4. **Loop iteration**: repeats the iteration logic `N` times if provided; otherwise runs until Ctrl-C.
+2. **Task selection**:
+   - If `--task-id` is given, run that task (error if not found).
+   - If `--next` is given, run the first task with `status != completed` and `model != human`.
+   - If neither `--task-id` nor `--next` is given, and `--loop` is not set, default to the first task with `status != completed` and `model != human` (matching existing lever behavior).
+3. **Single iteration**: runs full task-agent logic exactly once (including task validation, logging, git stashing/branching, and rate limiting).
+4. **Loop iteration**: repeats the iteration logic `N` times if provided; otherwise runs until Ctrl-C or a stop reason (no tasks, human task, blocked, dependency).
 5. **Ctrl-C handling**: stop cleanly after current iteration, exit with `0` unless the current iteration failed.
-6. **Compatibility**: initial implementation may wrap existing bash scripts to preserve behavior.
+6. **No shell dependency**: all execution paths are inside the Rust binary; no invocation of `bin/task-agent.sh` or `bin/ralph-loop.sh`.
 7. **Logging**: output should remain consistent with existing scripts where possible.
+8. **Exit code parity**: preserve exit codes used by the existing shell scripts for stop reasons and errors.
 
 ## Non-Functional Requirements
 - **Reliability**: no silent failures; errors must bubble up.
@@ -62,19 +71,26 @@ Unify the existing `task-agent` and `ralph-loop` entrypoints into a single Rust 
 - Validate `--loop` is either omitted (continuous mode) or a non-negative integer.
 - Print a short summary per iteration (start/end) if it doesn’t break existing output conventions.
 
-## Implementation Plan (Phased)
-### Phase 1: Rust wrapper
-- Create Rust CLI with `clap` that supports `--loop [N]`.
-- Implement `run_once()` that spawns existing `bin/task-agent.sh` using `std::process::Command`.
-- Implement loop logic in Rust.
-- Implement Ctrl-C handling using `ctrlc` crate.
-
-### Phase 2: Partial port
-- Move shared bash logic into Rust where feasible.
-- Reduce reliance on shell script execution.
-
-### Phase 3: Full port
-- Replace `task-agent.sh` and `ralph-loop.sh` with thin wrappers or deprecate them.
+## Implementation Plan
+1. **Inventory behavior and exit codes**
+   - Read `bin/task-agent.sh` and `bin/ralph-loop.sh` to enumerate flags, defaults, and exit codes.
+   - Map all stop reasons and their numeric exit codes to a Rust enum.
+2. **Port task-agent logic into Rust**
+   - Implement CLI flags in `src/main.rs` using `clap` for: `--tasks`, `--task-id`, `--next`, `--prompt`, `--workspace`, `--assignee`, `--reset-task`.
+   - Port task validation, task selection, rate-limit bookkeeping, git stashing/branch switching, and prompt construction.
+   - Replace shell execs (`jq`, `git`, `codex`) with Rust implementations or explicit `Command` invocations where appropriate.
+3. **Port loop logic into Rust**
+   - Implement `--loop [N]` and `--delay` in Rust.
+   - Preserve stop-reason handling (human task, blocked task, unmet dependencies).
+4. **Remove shell scripts as execution dependencies**
+   - Delete or deprecate `bin/task-agent.sh` and `bin/ralph-loop.sh`.
+   - Update any references to these scripts in tests and docs.
+5. **Update documentation and tests**
+   - Update `README.md` to remove install instructions for shell scripts and document new flags.
+   - Update `tests/` to call `lever` directly, including loop behavior and exit codes.
+6. **Polish**
+   - Add targeted Rust unit tests for task selection and exit code mapping.
+   - Add integration tests in `tests/` for representative flows.
 
 ## Dependencies
 - Rust toolchain (stable)
@@ -89,14 +105,15 @@ Unify the existing `task-agent` and `ralph-loop` entrypoints into a single Rust 
 
 ## Testing Requirements
 - Unit tests for CLI parsing, tasks file discovery, and loop count validation.
-- Integration tests that run `lever` with a known tasks file (can reuse existing bash test harness).
+- Unit tests for task selection and exit code mapping.
+- Integration tests that run `lever` with known tasks files (reuse existing bash harness).
 - Test Ctrl-C handling manually or via integration harness.
 
 ## Documentation Updates
 - Update `README.md` with new `lever` usage and examples.
-- Document loop semantics and Ctrl-C behavior.
-- Note any deprecation of `task-agent` and `ralph-loop` scripts.
+- Document loop semantics, exit codes, and Ctrl-C behavior.
+- Remove references to installing shell scripts and note they are removed.
 
 ## Open Questions
-- Should `--loop 0` be treated as a no-op (exit 0) or as an error?
-- Are there additional flags currently supported by `task-agent`/`ralph-loop` that must be mirrored explicitly?
+- Should `--loop 0` be treated as a no-op (exit 0) or as "loop forever"? (Existing `lever` treats 0 as infinite.)
+- Should `--next` be required for single-iteration runs without `--task-id`, or should `lever` continue auto-selecting the next task by default?
