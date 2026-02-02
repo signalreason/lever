@@ -21,7 +21,7 @@ mod rate_limit;
 mod task_agent;
 mod task_metadata;
 
-const DEFAULT_COMMAND_PATH: &str = "bin/task-agent.sh";
+const DEFAULT_COMMAND_PATH: &str = "internal";
 const TASK_FILE_SEARCH_ORDER: [&str; 2] = ["prd.json", "tasks.json"];
 
 #[derive(Debug, Clone)]
@@ -207,7 +207,7 @@ struct LeverArgs {
         long = "command-path",
         value_name = "PATH",
         default_value = DEFAULT_COMMAND_PATH,
-        help = "Executable invoked for each iteration (defaults to bin/task-agent.sh)"
+        help = "Executable invoked for each iteration (use 'internal' for Rust task agent)"
     )]
     command_path: PathBuf,
 }
