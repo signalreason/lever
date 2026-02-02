@@ -63,6 +63,56 @@ impl Display for TaskAgentExit {
 
 impl std::error::Error for TaskAgentExit {}
 
+#[derive(Debug)]
+struct StopReasonError {
+    reason: StopReason,
+}
+
+impl StopReasonError {
+    fn exit_code(&self) -> i32 {
+        self.reason.exit_code()
+    }
+}
+
+impl Display for StopReasonError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.reason.message())
+    }
+}
+
+impl std::error::Error for StopReasonError {}
+
+#[derive(Debug, Clone)]
+enum StopReason {
+    Human { task_id: String, is_next: bool },
+    Dependencies { task_id: String },
+    Blocked { task_id: String },
+}
+
+impl StopReason {
+    fn exit_code(&self) -> i32 {
+        1
+    }
+
+    fn message(&self) -> String {
+        match self {
+            StopReason::Human { task_id, is_next } => {
+                if *is_next {
+                    format!("Next task {} requires human input.", task_id)
+                } else {
+                    format!("Task {} requires human input.", task_id)
+                }
+            }
+            StopReason::Dependencies { task_id } => {
+                format!("Task {} cannot start due to unmet dependencies.", task_id)
+            }
+            StopReason::Blocked { task_id } => {
+                format!("Task {} blocked; manual intervention required.", task_id)
+            }
+        }
+    }
+}
+
 #[derive(Parser, Debug)]
 #[command(
     name = "lever",
@@ -235,6 +285,10 @@ fn main() -> Result<(), DynError> {
             let code = task_err.exit_code().unwrap_or(1);
             std::process::exit(code);
         }
+        if let Some(stop_err) = err.downcast_ref::<StopReasonError>() {
+            eprintln!("{}", stop_err);
+            std::process::exit(stop_err.exit_code());
+        }
         return Err(err);
     }
 
@@ -301,11 +355,11 @@ fn determine_selected_task(
     }
 
     if should_select_next {
-        if let Some(next) = select_next_non_completed(tasks) {
+        if let Some(next) = select_next_runnable(tasks) {
             return Ok(Some(next.clone()));
         }
 
-        return Err(format!("No non-completed task found in {}", tasks_path.display()).into());
+        return Err(format!("No runnable task found in {}", tasks_path.display()).into());
     }
 
     Ok(None)
@@ -317,8 +371,18 @@ fn select_next_non_completed(tasks: &[Task]) -> Option<&Task> {
         .find(|task| !status_is_completed(task.status.as_deref()))
 }
 
+fn select_next_runnable(tasks: &[Task]) -> Option<&Task> {
+    tasks.iter().find(|task| {
+        !status_is_completed(task.status.as_deref()) && !model_is_human(task.model.as_deref())
+    })
+}
+
 fn status_is_completed(status: Option<&str>) -> bool {
     matches!(status.unwrap_or("unstarted"), "completed")
+}
+
+fn model_is_human(model: Option<&str>) -> bool {
+    matches!(model.unwrap_or(""), "human")
 }
 
 fn resolve_tasks_path(tasks_arg: Option<PathBuf>, workspace: &Path) -> Result<PathBuf, DynError> {
@@ -481,14 +545,21 @@ fn run_single_iteration(
     config: &ExecutionConfig,
     shutdown_flag: &AtomicBool,
 ) -> Result<(), DynError> {
-    run_once(config, config.explicit_task_id.is_none(), shutdown_flag)?;
-    if shutdown_flag.load(Ordering::SeqCst) {
+    let status = run_once(config, None, config.explicit_task_id.is_none(), shutdown_flag)?;
+    if shutdown_flag.load(Ordering::SeqCst) && matches!(status.code(), Some(130)) {
         println!("lever: shutdown requested during task-agent execution");
-    } else {
-        println!("lever: task-agent execution finished");
+        return Ok(());
     }
 
-    Ok(())
+    if status.success() {
+        println!("lever: task-agent execution finished");
+        return Ok(());
+    }
+
+    Err(Box::new(TaskAgentExit {
+        command: config.command_path.clone(),
+        status,
+    }))
 }
 
 fn run_loop_iterations(
@@ -498,7 +569,6 @@ fn run_loop_iterations(
     shutdown_flag: &AtomicBool,
 ) -> Result<(), DynError> {
     let mut iteration = 0;
-    let use_next = config.explicit_task_id.is_none();
 
     loop {
         if shutdown_flag.load(Ordering::SeqCst) {
@@ -511,7 +581,35 @@ fn run_loop_iterations(
 
         iteration += 1;
         println!("lever: starting iteration {}", iteration);
-        run_once(config, use_next, shutdown_flag)?;
+        let mut selected_task = None;
+        if config.explicit_task_id.is_none() {
+            let tasks = load_tasks(&config.tasks_path)?;
+            let next = select_next_non_completed(&tasks);
+            if let Some(task) = next {
+                if model_is_human(task.model.as_deref()) {
+                    return Err(Box::new(StopReasonError {
+                        reason: StopReason::Human {
+                            task_id: task.task_id.clone(),
+                            is_next: true,
+                        },
+                    }));
+                }
+                if task.status.as_deref() == Some("blocked") {
+                    println!("lever: resuming blocked task {}", task.task_id);
+                }
+                selected_task = Some(task.clone());
+            } else {
+                println!("lever: no remaining tasks to drive.");
+                break;
+            }
+        }
+
+        let status = run_once(
+            config,
+            selected_task.as_ref().map(|task| task.task_id.as_str()),
+            false,
+            shutdown_flag,
+        )?;
 
         if shutdown_flag.load(Ordering::SeqCst) {
             println!(
@@ -519,8 +617,67 @@ fn run_loop_iterations(
                 iteration
             );
             break;
-        } else {
-            println!("lever: iteration {} completed", iteration);
+        }
+
+        match status.code() {
+            Some(0) => {
+                println!("lever: iteration {} completed", iteration);
+            }
+            Some(3) => {
+                println!("lever: task agent reported no runnable tasks (code 3); stopping.");
+                break;
+            }
+            Some(4) => {
+                let task_id = selected_task
+                    .as_ref()
+                    .map(|task| task.task_id.clone())
+                    .unwrap_or_else(|| config.explicit_task_id.clone().unwrap_or_else(|| "unknown".to_string()));
+                return Err(Box::new(StopReasonError {
+                    reason: StopReason::Human {
+                        task_id,
+                        is_next: false,
+                    },
+                }));
+            }
+            Some(5) | Some(6) => {
+                let task_id = selected_task
+                    .as_ref()
+                    .map(|task| task.task_id.clone())
+                    .unwrap_or_else(|| config.explicit_task_id.clone().unwrap_or_else(|| "unknown".to_string()));
+                return Err(Box::new(StopReasonError {
+                    reason: StopReason::Dependencies { task_id },
+                }));
+            }
+            Some(10) | Some(11) => {
+                let task_id = selected_task
+                    .as_ref()
+                    .map(|task| task.task_id.clone())
+                    .unwrap_or_else(|| config.explicit_task_id.clone().unwrap_or_else(|| "unknown".to_string()));
+                return Err(Box::new(StopReasonError {
+                    reason: StopReason::Blocked { task_id },
+                }));
+            }
+            Some(130) => {
+                return Err(Box::new(TaskAgentExit {
+                    command: config.command_path.clone(),
+                    status,
+                }));
+            }
+            Some(code) if code < 10 => {
+                return Err(Box::new(TaskAgentExit {
+                    command: config.command_path.clone(),
+                    status,
+                }));
+            }
+            Some(code) => {
+                println!("lever: task agent ended with {} (continuing).", code);
+            }
+            None => {
+                return Err(Box::new(TaskAgentExit {
+                    command: config.command_path.clone(),
+                    status,
+                }));
+            }
         }
 
         if let Some(limit) = max_iterations {
@@ -540,29 +697,24 @@ fn run_loop_iterations(
 
 fn run_once(
     config: &ExecutionConfig,
+    task_id_override: Option<&str>,
     allow_next: bool,
     shutdown_flag: &AtomicBool,
-) -> Result<(), DynError> {
+) -> Result<ExitStatus, DynError> {
     let mut command = Command::new(&config.command_path);
-    command.args(config.task_agent_args(allow_next));
+    command.args(config.task_agent_args(task_id_override, allow_next));
     command.current_dir(&config.workspace);
 
     let status = command.status()?;
-
-    if status.success()
-        || (shutdown_flag.load(Ordering::SeqCst) && matches!(status.code(), Some(130)))
-    {
-        Ok(())
-    } else {
-        Err(Box::new(TaskAgentExit {
-            command: config.command_path.clone(),
-            status,
-        }))
+    if shutdown_flag.load(Ordering::SeqCst) && matches!(status.code(), Some(130)) {
+        return Ok(status);
     }
+
+    Ok(status)
 }
 
 impl ExecutionConfig {
-    fn task_agent_args(&self, allow_next: bool) -> Vec<OsString> {
+    fn task_agent_args(&self, task_id_override: Option<&str>, allow_next: bool) -> Vec<OsString> {
         let mut args = Vec::new();
         args.push("--tasks".into());
         args.push(self.tasks_path.clone().into_os_string());
@@ -576,7 +728,10 @@ impl ExecutionConfig {
             args.push(assignee.clone().into());
         }
 
-        if let Some(task_id) = &self.explicit_task_id {
+        if let Some(task_id) = task_id_override {
+            args.push("--task-id".into());
+            args.push(task_id.into());
+        } else if let Some(task_id) = &self.explicit_task_id {
             args.push("--task-id".into());
             args.push(task_id.clone().into());
         } else if allow_next {
