@@ -1,7 +1,7 @@
 use std::{
     error::Error,
     fs,
-    path::{Path, PathBuf},
+    path::Path,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
