@@ -9,6 +9,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
+    time::Duration,
 };
 
 use clap::{value_parser, Parser};
@@ -33,6 +34,8 @@ struct ExecutionConfig {
     prompt: Option<PathBuf>,
     explicit_task_id: Option<String>,
     workspace: PathBuf,
+    assignee: Option<String>,
+    reset_task: bool,
 }
 
 #[derive(Debug)]
@@ -58,7 +61,7 @@ impl Display for TaskAgentExit {
     }
 }
 
-impl Error for TaskAgentExit {}
+impl std::error::Error for TaskAgentExit {}
 
 #[derive(Parser, Debug)]
 #[command(
@@ -91,6 +94,26 @@ struct LeverArgs {
     task_id: Option<String>,
 
     #[arg(
+        long,
+        help = "Select first task whose status != completed and model != human (cannot combine with --task-id)"
+    )]
+    next: bool,
+
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Workspace directory for the run (defaults to current directory)"
+    )]
+    workspace: Option<PathBuf>,
+
+    #[arg(
+        long,
+        value_name = "NAME",
+        help = "Assignee label forwarded to the downstream task agent"
+    )]
+    assignee: Option<String>,
+
+    #[arg(
         long = "loop",
         alias = "loop-count",
         value_name = "COUNT",
@@ -102,6 +125,20 @@ struct LeverArgs {
     loop_count: Option<u64>,
 
     #[arg(
+        long,
+        help = "Reset the selected task's attempts/status before running"
+    )]
+    reset_task: bool,
+
+    #[arg(
+        long,
+        value_name = "SECONDS",
+        value_parser = value_parser!(u64),
+        help = "Delay between loop iterations (seconds, only used with --loop; default: 0)"
+    )]
+    delay: Option<u64>,
+
+    #[arg(
         long = "command-path",
         value_name = "PATH",
         default_value = DEFAULT_COMMAND_PATH,
@@ -110,20 +147,38 @@ struct LeverArgs {
     command_path: PathBuf,
 }
 
+fn validate_lever_args(args: &LeverArgs) -> Result<(), DynError> {
+    let loop_mode = resolve_loop_mode(args.loop_count);
+    if args.next && args.task_id.is_some() {
+        Err("--next cannot be combined with --task-id"
+            .to_string()
+            .into())
+    } else if args.delay.is_some() && matches!(loop_mode, LoopMode::Single) {
+        Err("--delay requires --loop".to_string().into())
+    } else {
+        Ok(())
+    }
+}
+
 fn main() -> Result<(), DynError> {
+    let args = LeverArgs::parse();
+    validate_lever_args(&args)?;
+
     let LeverArgs {
         tasks,
         prompt,
         task_id,
+        next: _,
+        workspace,
+        assignee,
         loop_count,
+        reset_task,
+        delay,
         command_path,
-    } = LeverArgs::parse();
+    } = args;
 
-    let tasks_path = resolve_tasks_path(tasks)?;
-    let workspace = tasks_path
-        .parent()
-        .map(Path::to_path_buf)
-        .unwrap_or_else(|| PathBuf::from("."));
+    let workspace = resolve_workspace(workspace)?;
+    let tasks_path = resolve_tasks_path(tasks, &workspace)?;
     let command_path = resolve_command_path(command_path, &workspace)?;
     let tasks = load_tasks(&tasks_path)?;
     let loop_mode = resolve_loop_mode(loop_count);
@@ -163,15 +218,19 @@ fn main() -> Result<(), DynError> {
         println!("lever: loop mode active; deferring task selection");
     }
 
+    let delay_duration = Duration::from_secs(delay.unwrap_or(0));
+
     let exec_config = ExecutionConfig {
         command_path,
         tasks_path: tasks_path.clone(),
         prompt: prompt.clone(),
         explicit_task_id: task_id.clone(),
-        workspace,
+        workspace: workspace.clone(),
+        assignee,
+        reset_task,
     };
 
-    if let Err(err) = run_iterations(&exec_config, loop_mode, &shutdown_flag) {
+    if let Err(err) = run_iterations(&exec_config, loop_mode, delay_duration, &shutdown_flag) {
         if let Some(task_err) = err.downcast_ref::<TaskAgentExit>() {
             eprintln!("{}", task_err);
             let code = task_err.exit_code().unwrap_or(1);
@@ -263,30 +322,62 @@ fn status_is_completed(status: Option<&str>) -> bool {
     matches!(status.unwrap_or("unstarted"), "completed")
 }
 
-fn resolve_tasks_path(tasks_arg: Option<PathBuf>) -> Result<PathBuf, DynError> {
+fn resolve_tasks_path(tasks_arg: Option<PathBuf>, workspace: &Path) -> Result<PathBuf, DynError> {
     if let Some(explicit) = tasks_arg {
-        if explicit.is_file() {
-            return canonicalize_existing_path(explicit);
-        } else {
-            Err(format!(
-                "The specified tasks file {} does not exist or is not a file",
-                explicit.display()
-            )
-            .into())
+        let explicit_label = explicit.display().to_string();
+        let candidate = resolve_relative_to_workspace(explicit, workspace);
+        if candidate.is_file() {
+            return canonicalize_existing_path(candidate);
         }
+        Err(format!(
+            "The specified tasks file {} does not exist or is not a file",
+            explicit_label
+        )
+        .into())
     } else {
         for candidate in TASK_FILE_SEARCH_ORDER {
-            let candidate_path = Path::new(candidate);
+            let candidate_path = workspace.join(candidate);
             if candidate_path.is_file() {
-                return canonicalize_existing_path(candidate_path.to_path_buf());
+                return canonicalize_existing_path(candidate_path);
             }
         }
 
+        let location = if workspace_is_current_dir(workspace) {
+            "the current directory".to_string()
+        } else {
+            workspace.display().to_string()
+        };
+
         Err(format!(
-            "No tasks file specified and neither {} exist in the current directory",
-            TASK_FILE_SEARCH_ORDER.join(" nor ")
+            "No tasks file specified and neither {} exist in {}",
+            TASK_FILE_SEARCH_ORDER.join(" nor "),
+            location
         )
         .into())
+    }
+}
+
+fn resolve_workspace(workspace_arg: Option<PathBuf>) -> Result<PathBuf, DynError> {
+    let candidate = workspace_arg.unwrap_or_else(|| PathBuf::from("."));
+    if candidate.is_dir() {
+        canonicalize_existing_path(candidate)
+    } else {
+        Err(format!("Workspace not found: {}", candidate.display()).into())
+    }
+}
+
+fn workspace_is_current_dir(workspace: &Path) -> bool {
+    let current = std::env::current_dir()
+        .ok()
+        .and_then(|dir| fs::canonicalize(dir).ok());
+    matches!(current, Some(dir) if dir == workspace)
+}
+
+fn resolve_relative_to_workspace(path: PathBuf, workspace: &Path) -> PathBuf {
+    if path.is_absolute() {
+        path
+    } else {
+        workspace.join(path)
     }
 }
 
@@ -333,12 +424,13 @@ fn resolve_loop_mode(loop_count: Option<u64>) -> LoopMode {
 fn run_iterations(
     config: &ExecutionConfig,
     loop_mode: LoopMode,
+    delay: Duration,
     shutdown_flag: &AtomicBool,
 ) -> Result<(), DynError> {
     match loop_mode {
         LoopMode::Single => run_single_iteration(config, shutdown_flag),
-        LoopMode::Continuous => run_loop_iterations(config, None, shutdown_flag),
-        LoopMode::Count(limit) => run_loop_iterations(config, Some(limit), shutdown_flag),
+        LoopMode::Continuous => run_loop_iterations(config, None, delay, shutdown_flag),
+        LoopMode::Count(limit) => run_loop_iterations(config, Some(limit), delay, shutdown_flag),
     }
 }
 
@@ -359,6 +451,7 @@ fn run_single_iteration(
 fn run_loop_iterations(
     config: &ExecutionConfig,
     max_iterations: Option<u64>,
+    delay: Duration,
     shutdown_flag: &AtomicBool,
 ) -> Result<(), DynError> {
     let mut iteration = 0;
@@ -392,6 +485,10 @@ fn run_loop_iterations(
                 println!("lever: --loop limit reached ({})", limit);
                 break;
             }
+        }
+
+        if delay > Duration::ZERO {
+            std::thread::sleep(delay);
         }
     }
 
@@ -434,11 +531,20 @@ impl ExecutionConfig {
             args.push(prompt.clone().into_os_string());
         }
 
+        if let Some(assignee) = &self.assignee {
+            args.push("--assignee".into());
+            args.push(assignee.clone().into());
+        }
+
         if let Some(task_id) = &self.explicit_task_id {
             args.push("--task-id".into());
             args.push(task_id.clone().into());
         } else if allow_next {
             args.push("--next".into());
+        }
+
+        if self.reset_task {
+            args.push("--reset-task".into());
         }
 
         args

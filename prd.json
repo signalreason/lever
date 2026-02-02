@@ -3,7 +3,7 @@
     {
       "task_id": "LEVER-101",
       "title": "Catalog shell behaviors and exit codes",
-      "model": "gpt-5.1-codex-mini",
+      "model": "gpt-5.2-codex",
       "status": "completed",
       "definition_of_done": [
         "Documented all flags, defaults, and exit codes from bin/task-agent.sh and bin/ralph-loop.sh.",
@@ -23,8 +23,8 @@
     {
       "task_id": "LEVER-102",
       "title": "Add missing CLI flags to lever",
-      "model": "gpt-5.1-codex-mini",
-      "status": "unstarted",
+      "model": "gpt-5.2-codex",
+      "status": "completed",
       "definition_of_done": [
         "lever parses --next, --workspace, --assignee, --reset-task, and --delay.",
         "Flag validation matches shell semantics (required combinations and errors).",
@@ -32,12 +32,18 @@
       ],
       "recommended": {
         "approach": "Extend clap definitions and add validation helpers before deeper logic changes."
+      },
+      "observability": {
+        "run_attempts": 3,
+        "last_run_id": "20260202T004813Z-85110",
+        "last_update_utc": "2026-02-02T00:51:53Z",
+        "last_note": "Run 20260202T004813Z-85110 completed"
       }
     },
     {
       "task_id": "LEVER-103",
       "title": "Resolve workspace, tasks, and prompt paths in Rust",
-      "model": "gpt-5.1-codex-mini",
+      "model": "gpt-5.2-codex",
       "status": "unstarted",
       "definition_of_done": [
         "Tasks file discovery uses prd.json then tasks.json when --tasks is absent.",
@@ -51,7 +57,7 @@
     {
       "task_id": "LEVER-104",
       "title": "Implement task selection and stop reasons",
-      "model": "gpt-5.1-codex-mini",
+      "model": "gpt-5.2-codex",
       "status": "unstarted",
       "definition_of_done": [
         "--task-id selects a specific task or errors if missing.",
@@ -65,7 +71,7 @@
     {
       "task_id": "LEVER-105",
       "title": "Port task metadata validation",
-      "model": "gpt-5.1-codex-mini",
+      "model": "gpt-5.2-codex",
       "status": "unstarted",
       "definition_of_done": [
         "Selected task requires title, definition_of_done entries, and recommended.approach.",
@@ -79,7 +85,7 @@
     {
       "task_id": "LEVER-106",
       "title": "Port rate limit bookkeeping",
-      "model": "gpt-5.1-codex-mini",
+      "model": "gpt-5.2-codex",
       "status": "unstarted",
       "definition_of_done": [
         "lever reads and writes .ralph/rate_limit.json consistently with shell behavior.",
@@ -93,7 +99,7 @@
     {
       "task_id": "LEVER-107",
       "title": "Port git safety and workspace setup",
-      "model": "gpt-5.1-codex-mini",
+      "model": "gpt-5.2-codex",
       "status": "unstarted",
       "definition_of_done": [
         "lever verifies git repo and captures original branch/HEAD.",
@@ -107,7 +113,7 @@
     {
       "task_id": "LEVER-108",
       "title": "Port codex invocation and task status updates",
-      "model": "gpt-5.1-codex-mini",
+      "model": "gpt-5.2-codex",
       "status": "unstarted",
       "definition_of_done": [
         "lever constructs the prompt and invokes codex with the same inputs as the shell script.",
@@ -121,7 +127,7 @@
     {
       "task_id": "LEVER-109",
       "title": "Implement loop driver in Rust",
-      "model": "gpt-5.1-codex-mini",
+      "model": "gpt-5.2-codex",
       "status": "unstarted",
       "definition_of_done": [
         "--loop runs continuously when no count is provided (or 0) and stops on Ctrl-C.",
@@ -135,7 +141,7 @@
     {
       "task_id": "LEVER-110",
       "title": "Remove shell script dependency",
-      "model": "gpt-5.1-codex-mini",
+      "model": "gpt-5.2-codex",
       "status": "unstarted",
       "definition_of_done": [
         "lever no longer calls bin/task-agent.sh or bin/ralph-loop.sh.",
@@ -149,7 +155,7 @@
     {
       "task_id": "LEVER-111",
       "title": "Update documentation for shell removal",
-      "model": "gpt-5.1-codex-mini",
+      "model": "gpt-5.2-codex",
       "status": "unstarted",
       "definition_of_done": [
         "README.md documents lever as the only entry point and removes script install steps.",
@@ -163,7 +169,7 @@
     {
       "task_id": "LEVER-112",
       "title": "Update tests to target lever only",
-      "model": "gpt-5.1-codex-mini",
+      "model": "gpt-5.2-codex",
       "status": "unstarted",
       "definition_of_done": [
         "tests/ scripts call lever directly instead of shell wrappers.",
@@ -177,7 +183,7 @@
     {
       "task_id": "LEVER-113",
       "title": "Add Rust unit tests for selection and exit codes",
-      "model": "gpt-5.1-codex-mini",
+      "model": "gpt-5.2-codex",
       "status": "unstarted",
       "definition_of_done": [
         "Unit tests cover task selection with --task-id, --next, and default.",
