@@ -22,6 +22,7 @@ mod task_agent;
 mod task_metadata;
 
 const DEFAULT_COMMAND_PATH: &str = "internal";
+const LEGACY_TASK_AGENT_PATH: &str = "bin/task-agent.sh";
 const TASK_FILE_SEARCH_ORDER: [&str; 2] = ["prd.json", "tasks.json"];
 
 #[derive(Debug, Clone)]
@@ -532,12 +533,12 @@ fn default_prompt_path() -> Result<PathBuf, DynError> {
 fn resolve_command_path(path: PathBuf, workspace: &Path) -> Result<PathBuf, DynError> {
     let path_str = path.as_os_str().to_string_lossy();
     if path.is_absolute() {
-        return canonicalize_existing_path(path);
+        return canonicalize_or_fallback(&path, &path);
     }
 
     if path_str.contains('/') || path_str.contains('\\') {
         let anchored = workspace.join(&path);
-        return canonicalize_existing_path(anchored);
+        return canonicalize_or_fallback(&anchored, &path);
     } else {
         Ok(path)
     }
@@ -546,6 +547,28 @@ fn resolve_command_path(path: PathBuf, workspace: &Path) -> Result<PathBuf, DynE
 fn canonicalize_existing_path(path: PathBuf) -> Result<PathBuf, DynError> {
     fs::canonicalize(&path)
         .map_err(|err| format!("Failed to resolve {}: {}", path.display(), err).into())
+}
+
+fn canonicalize_or_fallback(candidate: &Path, original: &Path) -> Result<PathBuf, DynError> {
+    match fs::canonicalize(candidate) {
+        Ok(resolved) => Ok(resolved),
+        Err(err) => {
+            if is_legacy_task_agent_path(original) {
+                eprintln!(
+                    "lever: warning: legacy --command-path {} not found; using internal task agent",
+                    candidate.display()
+                );
+                Ok(PathBuf::from(DEFAULT_COMMAND_PATH))
+            } else {
+                Err(format!("Failed to resolve {}: {}", candidate.display(), err).into())
+            }
+        }
+    }
+}
+
+fn is_legacy_task_agent_path(path: &Path) -> bool {
+    let normalized = path.to_string_lossy().replace('\\', "/");
+    normalized == LEGACY_TASK_AGENT_PATH || normalized.ends_with("/bin/task-agent.sh")
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
