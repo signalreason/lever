@@ -247,10 +247,16 @@
         "cargo test passes."
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260203T054452Z-44879 completed",
+        "last_run_id": "20260203T054452Z-44879",
+        "last_update_utc": "2026-02-03T05:46:43Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Keep tests focused on pure helpers to avoid spawning external commands."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "LEVER-113",
       "title": "Add Rust unit tests for selection and exit codes"
     }

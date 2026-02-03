@@ -1165,3 +1165,71 @@ fn utc_timestamp() -> Result<String, DynError> {
     }
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn task(task_id: &str, status: Option<&str>, model: Option<&str>) -> TaskRecord {
+        TaskRecord {
+            task_id: task_id.to_string(),
+            status: status.map(str::to_string),
+            model: model.map(str::to_string),
+            raw: Value::Null,
+        }
+    }
+
+    #[test]
+    fn determine_selected_task_uses_explicit_task_id() {
+        let tasks = vec![task("ALPHA", None, None), task("BETA", None, None)];
+        let selected =
+            determine_selected_task(&tasks, Some("BETA"), false, Path::new("prd.json"))
+                .expect("selection failed");
+        let selected = selected.expect("expected task selection");
+        assert_eq!(selected.task_id, "BETA");
+    }
+
+    #[test]
+    fn determine_selected_task_selects_next_runnable() {
+        let tasks = vec![
+            task("DONE", Some("completed"), None),
+            task("HUMAN", None, Some("human")),
+            task("NEXT", None, None),
+        ];
+        let selected =
+            determine_selected_task(&tasks, None, true, Path::new("prd.json"))
+                .expect("selection failed");
+        let selected = selected.expect("expected task selection");
+        assert_eq!(selected.task_id, "NEXT");
+    }
+
+    #[test]
+    fn determine_selected_task_default_is_none() {
+        let tasks = vec![task("ALPHA", None, None)];
+        let selected =
+            determine_selected_task(&tasks, None, false, Path::new("prd.json"))
+                .expect("selection failed");
+        assert!(selected.is_none());
+    }
+
+    #[test]
+    fn stop_reason_exit_codes_map_to_nonzero() {
+        let reasons = vec![
+            StopReason::Human {
+                task_id: "T1".to_string(),
+                is_next: false,
+            },
+            StopReason::Dependencies {
+                task_id: "T2".to_string(),
+            },
+            StopReason::Blocked {
+                task_id: "T3".to_string(),
+            },
+        ];
+
+        for reason in reasons {
+            let err = StopReasonError { reason };
+            assert_eq!(err.exit_code(), 1);
+        }
+    }
+}
