@@ -67,10 +67,16 @@
         "./tests/run.sh passes."
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260203T061705Z-76854 completed",
+        "last_run_id": "20260203T061705Z-76854",
+        "last_update_utc": "2026-02-03T06:19:27Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Use a codex stub that exits 0 but does not write --output-last-message, then verify task status and logs."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "TEST-204",
       "title": "Add missing result.json failure-path test"
     },
