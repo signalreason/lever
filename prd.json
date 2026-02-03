@@ -144,12 +144,18 @@
       "task_id": "LEVER-108",
       "title": "Port codex invocation and task status updates",
       "model": "gpt-5.2-codex",
-      "status": "unstarted",
+      "status": "completed",
       "definition_of_done": [
         "lever constructs the prompt and invokes codex with the same inputs as the shell script.",
         "Task status/observability fields are updated per current behavior.",
         "Exit codes propagate and map to the correct stop reasons."
       ],
+      "observability": {
+        "run_attempts": 1,
+        "last_run_id": "20260203T001200Z-00000",
+        "last_update_utc": "2026-02-03T00:12:00Z",
+        "last_note": "Run 20260203T001200Z-00000 completed"
+      },
       "recommended": {
         "approach": "Translate the bash sequence into structured Rust steps with explicit error handling."
       }
