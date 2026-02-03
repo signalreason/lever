@@ -1,130 +1,136 @@
 {
   "tasks": [
     {
-      "task_id": "TEST-201",
-      "title": "Add coverage for --next selection",
-      "status": "unstarted",
-      "model": "gpt-5.2-codex",
       "definition_of_done": [
         "New test asserts --next selects the first runnable task.",
         "Test clarifies default behavior when --next is omitted in single-run mode.",
         "./tests/run.sh passes."
       ],
+      "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260203T060757Z-76854 completed",
+        "last_run_id": "20260203T060757Z-76854",
+        "last_update_utc": "2026-02-03T06:10:03Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Add a focused bash test that exercises --next with a small tasks file and checks stdout + exit status."
-      }
+      },
+      "status": "completed",
+      "task_id": "TEST-201",
+      "title": "Add coverage for --next selection"
     },
     {
-      "task_id": "TEST-202",
-      "title": "Add dependency-ordering test for --task-id",
-      "status": "unstarted",
-      "model": "gpt-5.2-codex",
       "definition_of_done": [
         "Test requests a later task-id and asserts exit code 6 plus the blocking-task message.",
         "Test uses a minimal tasks file with an earlier non-completed task.",
         "./tests/run.sh passes."
       ],
+      "model": "gpt-5.2-codex",
       "recommended": {
         "approach": "Stub codex so it is never invoked and validate the stderr message and non-zero exit."
-      }
+      },
+      "status": "unstarted",
+      "task_id": "TEST-202",
+      "title": "Add dependency-ordering test for --task-id"
     },
     {
-      "task_id": "TEST-203",
-      "title": "Add reset-task behavior test",
-      "status": "unstarted",
-      "model": "gpt-5.2-codex",
       "definition_of_done": [
         "Test verifies --reset-task clears observability.run_attempts and updates status/last_run_id as expected.",
         "Test runs lever internal task-agent with a stub codex result.",
         "./tests/run.sh passes."
       ],
+      "model": "gpt-5.2-codex",
       "recommended": {
         "approach": "Seed a task with observability fields, run with --reset-task, then inspect prd.json after the run."
-      }
+      },
+      "status": "unstarted",
+      "task_id": "TEST-203",
+      "title": "Add reset-task behavior test"
     },
     {
-      "task_id": "TEST-204",
-      "title": "Add missing result.json failure-path test",
-      "status": "unstarted",
-      "model": "gpt-5.2-codex",
       "definition_of_done": [
         "Test simulates codex without writing result.json and expects exit 10.",
         "Task status is set to blocked with a note referencing the codex log.",
         "./tests/run.sh passes."
       ],
+      "model": "gpt-5.2-codex",
       "recommended": {
         "approach": "Use a codex stub that exits 0 but does not write --output-last-message, then verify task status and logs."
-      }
+      },
+      "status": "unstarted",
+      "task_id": "TEST-204",
+      "title": "Add missing result.json failure-path test"
     },
     {
-      "task_id": "TEST-205",
-      "title": "Add attempt-limit block test",
-      "status": "unstarted",
-      "model": "gpt-5.2-codex",
       "definition_of_done": [
         "Test seeds run_attempts at MAX_RUN_ATTEMPTS and confirms exit 11 and blocked status.",
         "Test asserts no codex invocation occurs once the limit is reached.",
         "./tests/run.sh passes."
       ],
+      "model": "gpt-5.2-codex",
       "recommended": {
         "approach": "Write a task with observability.run_attempts = 3 and verify the guard triggers before codex."
-      }
+      },
+      "status": "unstarted",
+      "task_id": "TEST-205",
+      "title": "Add attempt-limit block test"
     },
     {
-      "task_id": "TEST-206",
-      "title": "Add unsupported model rejection test",
-      "status": "unstarted",
-      "model": "gpt-5.2-codex",
       "definition_of_done": [
         "Test uses a task model outside the allow-list and expects exit 2.",
         "Error message references the unsupported model and task id.",
         "./tests/run.sh passes."
       ],
+      "model": "gpt-5.2-codex",
       "recommended": {
         "approach": "Keep the tasks file minimal and run lever with internal agent to hit model_supported guard."
-      }
+      },
+      "status": "unstarted",
+      "task_id": "TEST-206",
+      "title": "Add unsupported model rejection test"
     },
     {
-      "task_id": "TEST-207",
-      "title": "Add bare-array tasks file test",
-      "status": "unstarted",
-      "model": "gpt-5.2-codex",
       "definition_of_done": [
         "Test uses a tasks JSON file as a bare array (no \"tasks\" key).",
         "Lever selects the first runnable task without error.",
         "./tests/run.sh passes."
       ],
+      "model": "gpt-5.2-codex",
       "recommended": {
         "approach": "Create a temporary tasks.json containing only an array and check selected task output."
-      }
+      },
+      "status": "unstarted",
+      "task_id": "TEST-207",
+      "title": "Add bare-array tasks file test"
     },
     {
-      "task_id": "TEST-208",
-      "title": "Add delay validation test",
-      "status": "unstarted",
-      "model": "gpt-5.2-codex",
       "definition_of_done": [
         "Test runs with --delay but without --loop and expects a non-zero exit.",
         "Error message mentions that --delay requires --loop.",
         "./tests/run.sh passes."
       ],
+      "model": "gpt-5.2-codex",
       "recommended": {
         "approach": "Use cargo run with a minimal repo and assert the validation error string."
-      }
+      },
+      "status": "unstarted",
+      "task_id": "TEST-208",
+      "title": "Add delay validation test"
     },
     {
-      "task_id": "TEST-209",
-      "title": "Add assignee forwarding test",
-      "status": "unstarted",
-      "model": "gpt-5.2-codex",
       "definition_of_done": [
         "External command-path receives --assignee value in argv.",
         "Test verifies the arg list captured by a stub command.",
         "./tests/run.sh passes."
       ],
+      "model": "gpt-5.2-codex",
       "recommended": {
         "approach": "Extend the loop command-path test or add a new test that captures argv to a file."
-      }
+      },
+      "status": "unstarted",
+      "task_id": "TEST-209",
+      "title": "Add assignee forwarding test"
     }
   ]
 }
