@@ -65,6 +65,8 @@ JSON
 }
 JSON
 
+  ensure_workspace_prompt "$workspace"
+
   init_git_repo "$workspace"
 
   local expected_tasks_path

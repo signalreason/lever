@@ -67,6 +67,8 @@ cat > "$repo_dir/prd.json" <<'JSON'
 }
 JSON
 
+ensure_workspace_prompt "$repo_dir"
+
 init_git_repo "$repo_dir"
 
 output_with_next="$(

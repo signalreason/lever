@@ -793,29 +793,59 @@ fn run_once(
     shutdown_flag: &AtomicBool,
 ) -> Result<ExitStatus, DynError> {
     let task_id_for_git = resolve_task_id_for_git(config, task_id_override, allow_next)?;
+    let prompt_content = read_prompt_content(&config.prompt)?;
+    let internal = is_internal_task_agent(&config.command_path);
+    let temp_prompt_path = if internal {
+        Some(write_temp_prompt(&prompt_content)?)
+    } else {
+        None
+    };
     let _git_guard = GitWorkspaceGuard::prepare(&config.workspace, task_id_for_git.as_deref())?;
-    if is_internal_task_agent(&config.command_path) {
+    let mut restored_prompt = false;
+    if !internal && !config.prompt.is_file() {
+        if let Some(parent) = config.prompt.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(&config.prompt, &prompt_content)?;
+        restored_prompt = true;
+    }
+
+    let result = if internal {
         let agent_config = task_agent::TaskAgentConfig {
             tasks_path: config.tasks_path.clone(),
-            prompt_path: config.prompt.clone(),
+            prompt_path: temp_prompt_path.clone().unwrap(),
             workspace: config.workspace.clone(),
             reset_task: config.reset_task,
             explicit_task_id: config.explicit_task_id.clone(),
         };
         let exit_code =
             task_agent::run_task_agent(&agent_config, task_id_override, allow_next, Some(shutdown_flag))?;
-        let status = exit_status_from_code(exit_code);
-        if shutdown_flag.load(Ordering::SeqCst) && matches!(status.code(), Some(130)) {
-            return Ok(status);
+        Ok(exit_status_from_code(exit_code))
+    } else {
+        let mut command = Command::new(&config.command_path);
+        command.args(config.task_agent_args(task_id_override, allow_next, &config.prompt));
+        command.current_dir(&config.workspace);
+        Ok(command.status()?)
+    };
+
+    if restored_prompt {
+        if let Err(err) = fs::remove_file(&config.prompt) {
+            eprintln!(
+                "Warning: failed to remove restored prompt file {}: {}",
+                config.prompt.display(),
+                err
+            );
         }
-        return Ok(status);
+    }
+    if let Some(temp_prompt_path) = temp_prompt_path {
+        let _ = fs::remove_file(temp_prompt_path);
     }
 
-    let mut command = Command::new(&config.command_path);
-    command.args(config.task_agent_args(task_id_override, allow_next));
-    command.current_dir(&config.workspace);
+    let status = match result {
+        Ok(status) => status,
+        Err(err) => return Err(err),
+    };
 
-    let status = command.status()?;
     if shutdown_flag.load(Ordering::SeqCst) && matches!(status.code(), Some(130)) {
         return Ok(status);
     }
@@ -845,14 +875,19 @@ fn validate_task_metadata(task: &TaskRecord) -> Result<(), TaskMetadataError> {
 }
 
 impl ExecutionConfig {
-    fn task_agent_args(&self, task_id_override: Option<&str>, allow_next: bool) -> Vec<OsString> {
+    fn task_agent_args(
+        &self,
+        task_id_override: Option<&str>,
+        allow_next: bool,
+        prompt_path: &Path,
+    ) -> Vec<OsString> {
         let mut args = Vec::new();
         args.push("--tasks".into());
         args.push(self.tasks_path.clone().into_os_string());
         args.push("--workspace".into());
         args.push(self.workspace.clone().into_os_string());
         args.push("--prompt".into());
-        args.push(self.prompt.clone().into_os_string());
+        args.push(prompt_path.as_os_str().to_os_string());
 
         if let Some(assignee) = &self.assignee {
             args.push("--assignee".into());
@@ -875,6 +910,30 @@ impl ExecutionConfig {
 
         args
     }
+}
+
+fn read_prompt_content(prompt_path: &Path) -> Result<String, DynError> {
+    fs::read_to_string(prompt_path).map_err(|err| {
+        DynError::from(format!(
+            "Failed to read prompt file {}: {}",
+            prompt_path.display(),
+            err
+        ))
+    })
+}
+
+fn write_temp_prompt(content: &str) -> Result<PathBuf, DynError> {
+    let stamp = utc_timestamp()?;
+    let filename = format!("lever-prompt-{}-{}.md", stamp, std::process::id());
+    let temp_path = std::env::temp_dir().join(filename);
+    fs::write(&temp_path, content).map_err(|err| {
+        DynError::from(format!(
+            "Failed to write prompt copy {}: {}",
+            temp_path.display(),
+            err
+        ))
+    })?;
+    Ok(temp_path)
 }
 
 fn resolve_task_id_for_git(
