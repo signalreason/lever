@@ -184,7 +184,7 @@
       "task_id": "LEVER-110",
       "title": "Remove shell script dependency",
       "model": "gpt-5.2-codex",
-      "status": "unstarted",
+      "status": "completed",
       "definition_of_done": [
         "lever no longer calls bin/task-agent.sh or bin/ralph-loop.sh.",
         "bin/task-agent.sh and bin/ralph-loop.sh are removed or clearly deprecated.",
@@ -192,6 +192,12 @@
       ],
       "recommended": {
         "approach": "Delete scripts once Rust parity is verified to avoid regressions."
+      },
+      "observability": {
+        "run_attempts": 1,
+        "last_run_id": "20260203T024403Z-10761",
+        "last_update_utc": "2026-02-03T03:03:19Z",
+        "last_note": "Run 20260203T024403Z-10761 completed"
       }
     },
     {

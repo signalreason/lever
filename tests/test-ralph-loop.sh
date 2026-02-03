@@ -6,10 +6,15 @@ TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$TEST_DIR/helpers.sh"
 
 require_cmd jq
+require_cmd cargo
+require_cmd git
 
+repo_root="$(cd "$TEST_DIR/.." && pwd)"
 repo_dir="$(make_temp_dir)"
 home_dir="$(make_temp_dir)"
-trap 'rm -rf "$repo_dir" "$home_dir"' EXIT
+stub_dir="$(make_temp_dir)"
+args_dir="$(make_temp_dir)"
+trap 'rm -rf "$repo_dir" "$home_dir" "$stub_dir" "$args_dir"' EXIT
 cat > "$repo_dir/prd.json" <<'JSON'
 {
   "tasks": [
@@ -35,12 +40,15 @@ cat > "$repo_dir/prd.json" <<'JSON'
 }
 JSON
 
+init_git_repo "$repo_dir"
+workspace_real="$(cd "$repo_dir" && pwd -P)"
+
 mkdir -p "$home_dir/.prompts"
 cat > "$home_dir/.prompts/autonomous-senior-engineer.prompt.md" <<'EOF2'
 Test prompt
 EOF2
+prompt_real="$(cd "$home_dir" && pwd -P)/.prompts/autonomous-senior-engineer.prompt.md"
 
-stub_dir="$repo_dir/stubs"
 mkdir -p "$stub_dir"
 cat > "$stub_dir/task-agent" <<'EOF2'
 #!/usr/bin/env bash
@@ -50,16 +58,21 @@ exit 3
 EOF2
 chmod +x "$stub_dir/task-agent"
 
-args_file="$repo_dir/args.txt"
-run_dir="$(make_temp_dir)"
-trap 'rm -rf "$run_dir"' EXIT
+args_file="$args_dir/args.txt"
+
+(
+  cd "$repo_root"
+  cargo build --quiet
+)
+lever_bin="$repo_root/target/debug/lever"
 
 HOME="$home_dir" \
-ARGS_FILE="$args_file" "$TEST_DIR/../bin/ralph-loop.sh" \
+ARGS_FILE="$args_file" "$lever_bin" \
   --workspace "$repo_dir" \
   --tasks prd.json \
-  --task-agent "$stub_dir/task-agent" \
+  --command-path "$stub_dir/task-agent" \
   --assignee test-assignee \
+  --loop 1 \
   --delay 0 \
   >/dev/null
 
@@ -67,7 +80,7 @@ if ! grep -Fxq -- "--workspace" "$args_file"; then
   echo "Expected --workspace to be passed to task agent" >&2
   exit 1
 fi
-if ! grep -Fxq -- "$repo_dir" "$args_file"; then
+if ! grep -Fxq -- "$workspace_real" "$args_file"; then
   echo "Expected workspace path to be passed to task agent" >&2
   exit 1
 fi
@@ -76,7 +89,7 @@ if ! grep -Fxq -- "--tasks" "$args_file"; then
   echo "Expected tasks path to be resolved against workspace" >&2
   exit 1
 fi
-if ! grep -Fxq -- "$repo_dir/prd.json" "$args_file"; then
+if ! grep -Fxq -- "$workspace_real/prd.json" "$args_file"; then
   echo "Expected tasks path to be resolved against workspace" >&2
   exit 1
 fi
@@ -85,7 +98,7 @@ if ! grep -Fxq -- "--prompt" "$args_file"; then
   echo "Expected prompt path to be resolved against workspace" >&2
   exit 1
 fi
-if ! grep -Fxq -- "$home_dir/.prompts/autonomous-senior-engineer.prompt.md" "$args_file"; then
+if ! grep -Fxq -- "$prompt_real" "$args_file"; then
   echo "Expected prompt path to use the default ~/.prompts location" >&2
   exit 1
 fi

@@ -7,8 +7,10 @@ source "$TEST_DIR/helpers.sh"
 
 require_cmd jq
 require_cmd git
+require_cmd cargo
 require_cmd python
 
+repo_root="$(cd "$TEST_DIR/.." && pwd)"
 repo_dir="$(make_temp_dir)"
 stub_bin="$(make_temp_dir)"
 home_dir="$(make_temp_dir)"
@@ -99,6 +101,12 @@ EOF2
 chmod +x "$stub_bin/codex"
 
 (
+  cd "$repo_root"
+  cargo build --quiet
+)
+lever_bin="$repo_root/target/debug/lever"
+
+(
   cd "$repo_dir"
   git init -b main >/dev/null
   git add README.md prd.json tests/run.sh
@@ -109,13 +117,13 @@ chmod +x "$stub_bin/codex"
 
 HOME="$home_dir" \
 PATH="$stub_bin:$PATH" \
+ASSIGNEE="test-assignee" \
   GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.com \
   GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.com \
-  "$TEST_DIR/../bin/task-agent.sh" \
+  "$lever_bin" \
   --workspace "$repo_dir" \
   --tasks prd.json \
   --task-id T1 \
-  --assignee test-assignee \
   >/dev/null
 
 status="$(jq -r '.tasks[0].status' "$repo_dir/prd.json")"

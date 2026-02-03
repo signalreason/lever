@@ -1,18 +1,17 @@
 # Repository Guidelines
 
 ## Project Structure
-- `bin/`: Bash entrypoints for the Ralph loop and task agent (`ralph-loop.sh`, `task-agent.sh`).
 - `prompts/`: Prompt templates passed to Codex (start with `prompts/autonomous-senior-engineer.prompt.md`).
 - `tests/`: Bash test harness and test cases (`tests/run.sh`, `tests/test-*.sh`).
 - `README.md`: Usage and CLI examples.
 
 ## Setup & Requirements
-This repo is shell-first. You need `bash`, `jq`, `git`, `python`, and the `codex` CLI available on `PATH` (see `README.md`).
+This repo is Rust-first with bash test harnesses. You need `bash`, `cargo`, `jq`, `git`, `python`, and the `codex` CLI available on `PATH` (see `README.md`).
 
 ## Build, Test, and Development Commands
 - `./tests/run.sh`: Runs every `tests/test-*.sh` script and reports failures.
-- `bin/ralph-loop.sh --tasks prd.json --prompt prompts/autonomous-senior-engineer.prompt.md`: Drives a tasks file in a loop.
-- `bin/task-agent.sh --tasks prd.json --task-id ASM-001 --prompt prompts/autonomous-senior-engineer.prompt.md`: Runs a single task iteration.
+- `cargo run -- --loop --tasks prd.json --prompt prompts/autonomous-senior-engineer.prompt.md`: Drives a tasks file in a loop.
+- `cargo run -- --tasks prd.json --task-id ASM-001 --prompt prompts/autonomous-senior-engineer.prompt.md`: Runs a single task iteration.
 
 ## Coding Style & Naming Conventions
 - Shell scripts should be `bash` with `set -euo pipefail`.

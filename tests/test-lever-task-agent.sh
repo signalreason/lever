@@ -98,7 +98,6 @@ chmod +x "$stub_bin/codex"
 
 cargo build --quiet --manifest-path "$repo_root/Cargo.toml"
 lever_bin="$repo_root/target/debug/lever"
-task_agent_path="$repo_root/bin/task-agent.sh"
 
 (
   cd "$repo_dir"
@@ -109,8 +108,7 @@ task_agent_path="$repo_root/bin/task-agent.sh"
     GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.com \
     "$lever_bin" \
     --tasks prd.json \
-    --task-id T1 \
-    --command-path "$task_agent_path"
+    --task-id T1
 )
 
 status="$(jq -r '.tasks[0].status' "$repo_dir/prd.json")"

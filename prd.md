@@ -1,7 +1,7 @@
 # Product Requirements Document: Lever CLI (Rust)
 
 ## Overview
-Move the complete Ralph loop and task agent behavior into the Rust `lever` binary so it can run from any repo without relying on `./bin/task-agent.sh` or `./bin/ralph-loop.sh`. The CLI should preserve current semantics, flags, and output as closely as possible while removing the shell script dependency.
+Move the complete Ralph loop and task agent behavior into the Rust `lever` binary so it can run from any repo without relying on legacy shell scripts. The CLI should preserve current semantics, flags, and output as closely as possible while removing the shell script dependency.
 
 ## Goals
 - Deliver a single Rust binary `lever` that covers the behavior of both `task-agent` and `ralph-loop`.
@@ -56,7 +56,7 @@ Move the complete Ralph loop and task agent behavior into the Rust `lever` binar
 3. **Single iteration**: runs full task-agent logic exactly once (including task validation, logging, git stashing/branching, and rate limiting).
 4. **Loop iteration**: repeats the iteration logic `N` times if provided; otherwise runs until Ctrl-C or a stop reason (no tasks, human task, blocked, dependency).
 5. **Ctrl-C handling**: stop cleanly after current iteration, exit with `0` unless the current iteration failed.
-6. **No shell dependency**: all execution paths are inside the Rust binary; no invocation of `bin/task-agent.sh` or `bin/ralph-loop.sh`.
+6. **No shell dependency**: all execution paths are inside the Rust binary; no invocation of legacy shell scripts.
 7. **Logging**: output should remain consistent with existing scripts where possible.
 8. **Exit code parity**: preserve exit codes used by the existing shell scripts for stop reasons and errors.
 
@@ -73,7 +73,7 @@ Move the complete Ralph loop and task agent behavior into the Rust `lever` binar
 
 ## Implementation Plan
 1. **Inventory behavior and exit codes**
-   - Read `bin/task-agent.sh` and `bin/ralph-loop.sh` to enumerate flags, defaults, and exit codes.
+   - Read the legacy shell scripts to enumerate flags, defaults, and exit codes.
    - Map all stop reasons and their numeric exit codes to a Rust enum.
 2. **Port task-agent logic into Rust**
    - Implement CLI flags in `src/main.rs` using `clap` for: `--tasks`, `--task-id`, `--next`, `--prompt`, `--workspace`, `--assignee`, `--reset-task`.
@@ -83,7 +83,7 @@ Move the complete Ralph loop and task agent behavior into the Rust `lever` binar
    - Implement `--loop [N]` and `--delay` in Rust.
    - Preserve stop-reason handling (human task, blocked task, unmet dependencies).
 4. **Remove shell scripts as execution dependencies**
-   - Delete or deprecate `bin/task-agent.sh` and `bin/ralph-loop.sh`.
+   - Delete or deprecate the legacy shell scripts.
    - Update any references to these scripts in tests and docs.
 5. **Update documentation and tests**
    - Update `README.md` to remove install instructions for shell scripts and document new flags.
