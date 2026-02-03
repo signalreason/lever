@@ -514,7 +514,7 @@ fn resolve_relative_to_workspace(path: PathBuf, workspace: &Path) -> PathBuf {
 fn resolve_prompt_path(prompt_arg: Option<PathBuf>, workspace: &Path) -> Result<PathBuf, DynError> {
     let candidate = match prompt_arg {
         Some(explicit) => resolve_relative_to_workspace(explicit, workspace),
-        None => default_prompt_path()?,
+        None => default_prompt_path(workspace),
     };
 
     if candidate.is_file() {
@@ -524,10 +524,8 @@ fn resolve_prompt_path(prompt_arg: Option<PathBuf>, workspace: &Path) -> Result<
     }
 }
 
-fn default_prompt_path() -> Result<PathBuf, DynError> {
-    let home = std::env::var_os("HOME")
-        .ok_or_else(|| "HOME environment variable is not set; cannot resolve default prompt file")?;
-    Ok(PathBuf::from(home).join(".prompts/autonomous-senior-engineer.prompt.md"))
+fn default_prompt_path(workspace: &Path) -> PathBuf {
+    workspace.join("prompts/autonomous-senior-engineer.prompt.md")
 }
 
 fn resolve_command_path(path: PathBuf, workspace: &Path) -> Result<PathBuf, DynError> {

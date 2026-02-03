@@ -13,8 +13,7 @@ require_cmd python
 repo_root="$(cd "$TEST_DIR/.." && pwd)"
 repo_dir="$(make_temp_dir)"
 stub_bin="$(make_temp_dir)"
-home_dir="$(make_temp_dir)"
-trap 'rm -rf "$repo_dir" "$stub_bin" "$home_dir"' EXIT
+trap 'rm -rf "$repo_dir" "$stub_bin"' EXIT
 
 cat > "$repo_dir/prd.json" <<'JSON'
 {
@@ -35,10 +34,7 @@ cat > "$repo_dir/prd.json" <<'JSON'
 }
 JSON
 
-mkdir -p "$home_dir/.prompts"
-cat > "$home_dir/.prompts/autonomous-senior-engineer.prompt.md" <<'EOF_PROMPT'
-Test prompt
-EOF_PROMPT
+ensure_workspace_prompt "$repo_dir"
 
 cat > "$repo_dir/README.md" <<'EOF_README'
 Test repo for unsupported model
@@ -65,7 +61,6 @@ lever_bin="$repo_root/target/debug/lever"
 
 set +e
 output=$(
-  HOME="$home_dir" \
   PATH="$stub_bin:$PATH" \
   ASSIGNEE="test-assignee" \
   GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.com \

@@ -74,8 +74,6 @@ run_loop_limit_test() {
   local limit="$1"
   local workspace
   workspace="$(make_temp_dir)"
-  local home_dir
-  home_dir="$(make_temp_dir)"
   local log_dir
   log_dir="$(make_temp_dir)"
 
@@ -112,14 +110,10 @@ JSON
 
   init_git_repo "$workspace"
 
-  mkdir -p "$home_dir/.prompts"
-  cat > "$home_dir/.prompts/autonomous-senior-engineer.prompt.md" <<'EOF2'
-Test prompt
-EOF2
+  ensure_workspace_prompt "$workspace"
 
   local log="$log_dir/loop-limit-${limit}.log"
 
-  HOME="$home_dir" \
   PATH="$stub_dir:$PATH" \
     GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.com \
     GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.com \
@@ -146,14 +140,12 @@ EOF2
     exit 1
   fi
 
-  rm -rf "$workspace" "$home_dir" "$log_dir"
+  rm -rf "$workspace" "$log_dir"
 }
 
 run_no_remaining_tasks_stop() {
   local workspace
   workspace="$(make_temp_dir)"
-  local home_dir
-  home_dir="$(make_temp_dir)"
   local log_dir
   log_dir="$(make_temp_dir)"
 
@@ -178,14 +170,10 @@ JSON
 
   init_git_repo "$workspace"
 
-  mkdir -p "$home_dir/.prompts"
-  cat > "$home_dir/.prompts/autonomous-senior-engineer.prompt.md" <<'EOF2'
-Test prompt
-EOF2
+  ensure_workspace_prompt "$workspace"
 
   local log="$log_dir/no-remaining.log"
 
-  HOME="$home_dir" \
   PATH="$stub_dir:$PATH" \
     GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.com \
     GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.com \
@@ -209,14 +197,12 @@ EOF2
     fi
   fi
 
-  rm -rf "$workspace" "$home_dir" "$log_dir"
+  rm -rf "$workspace" "$log_dir"
 }
 
 run_human_stop_reason() {
   local workspace
   workspace="$(make_temp_dir)"
-  local home_dir
-  home_dir="$(make_temp_dir)"
   local log_dir
   log_dir="$(make_temp_dir)"
 
@@ -241,15 +227,11 @@ JSON
 
   init_git_repo "$workspace"
 
-  mkdir -p "$home_dir/.prompts"
-  cat > "$home_dir/.prompts/autonomous-senior-engineer.prompt.md" <<'EOF2'
-Test prompt
-EOF2
+  ensure_workspace_prompt "$workspace"
 
   local log="$log_dir/human-stop.log"
 
   set +e
-  HOME="$home_dir" \
   PATH="$stub_dir:$PATH" \
     GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.com \
     GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.com \
@@ -276,7 +258,7 @@ EOF2
     exit 1
   fi
 
-  rm -rf "$workspace" "$home_dir" "$log_dir"
+  rm -rf "$workspace" "$log_dir"
 }
 
 run_continuous_case() {
@@ -285,8 +267,6 @@ run_continuous_case() {
   local loop_args=("$@")
   local workspace
   workspace="$(make_temp_dir)"
-  local home_dir
-  home_dir="$(make_temp_dir)"
   local log_dir
   log_dir="$(make_temp_dir)"
 
@@ -311,17 +291,14 @@ JSON
 
   init_git_repo "$workspace"
 
-  mkdir -p "$home_dir/.prompts"
-  cat > "$home_dir/.prompts/autonomous-senior-engineer.prompt.md" <<'EOF2'
-Test prompt
-EOF2
+  ensure_workspace_prompt "$workspace"
 
   local log="$log_dir/continuous-${name}.log"
   local invocations="$log_dir/continuous-${name}.invocations"
 
   : > "$invocations"
 
-  HOME="$home_dir" LOG_PATH="$invocations" SLEEP_DURATION=0.3 "$lever_bin" \
+  LOG_PATH="$invocations" SLEEP_DURATION=0.3 "$lever_bin" \
     --workspace "$workspace" \
     --tasks "$workspace/prd.json" \
     "${loop_args[@]}" \
@@ -370,7 +347,7 @@ EOF2
     exit 1
   fi
 
-  rm -rf "$workspace" "$home_dir" "$log_dir"
+  rm -rf "$workspace" "$log_dir"
 }
 
 run_loop_limit_test 2

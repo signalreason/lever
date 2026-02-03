@@ -66,6 +66,7 @@ cat > "$repo_dir/prd.json" <<'JSON'
 JSON
 
 init_git_repo "$repo_dir"
+ensure_workspace_prompt "$repo_dir"
 
 output="$(
   cargo run --quiet --manifest-path "$TEST_DIR/../Cargo.toml" \

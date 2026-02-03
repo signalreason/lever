@@ -27,3 +27,11 @@ init_git_repo() {
       git commit -m "init" >/dev/null
   )
 }
+
+ensure_workspace_prompt() {
+  local workspace="$1"
+  mkdir -p "$workspace/prompts"
+  cat > "$workspace/prompts/autonomous-senior-engineer.prompt.md" <<'EOF'
+Test prompt
+EOF
+}

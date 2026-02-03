@@ -10,7 +10,7 @@ The focus is on flag mappings, discovery defaults, task selection rules, loop se
 ## Defaults and discovery order
 
 - **Tasks file lookup:** when `--tasks` is not provided, probe the workspace for `prd.json` first and fall back to `tasks.json` if present. Abort with a clear error if neither exists. All paths are resolved relative to the workspace before the file is read.
-- **Prompt file:** default to `$HOME/.prompts/autonomous-senior-engineer.prompt.md`. `--prompt` overrides this path, and the CLI must validate that the prompt file is present before starting a run.
+- **Prompt file:** default to `prompts/autonomous-senior-engineer.prompt.md` under the workspace. `--prompt` overrides this path, and the CLI must validate that the prompt file is present before starting a run.
 - **Workspace:** defaults to the current working directory. `--workspace` changes the directory, and every other path (`--tasks`, `--prompt`, the task-agent binary) is resolved relative to the workspace.
 - **Assignee log label:** `ASSIGNEE` is read by the internal task agent for log metadata and is never written back to the task file.
 - **Task agent binary:** `--command-path` selects the executable used per iteration. The default is `internal` (the Rust task agent). If the argument contains a slash it is resolved relative to the workspace; otherwise the CLI looks the command up on `PATH`.

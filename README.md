@@ -21,13 +21,7 @@ This installs `lever` into your Cargo bin directory (usually `~/.cargo/bin`). Ad
 
 ## Prompt setup
 
-Link the default prompt into `~/.prompts` so `lever` can find it automatically:
-
-```bash
-mkdir -p ~/.prompts
-ln -s "$PWD/prompts/autonomous-senior-engineer.prompt.md" \
-  ~/.prompts/autonomous-senior-engineer.prompt.md
-```
+The default prompt is `prompts/autonomous-senior-engineer.prompt.md` under the workspace. If you run `lever` in a repo without that file and do not supply `--prompt`, `lever` will fail with `Prompt file not found: <workspace>/prompts/autonomous-senior-engineer.prompt.md`. Pass `--prompt /path/to/prompt.md` in that case.
 
 ## Lever CLI
 
@@ -37,7 +31,7 @@ The `lever` binary is the canonical entry point. Run `lever` once to execute the
 
 - `--tasks` defaults to `prd.json`, falling back to `tasks.json` in the current directory if the flagged file is absent.
 - `--workspace` defaults to the current directory; when `--tasks` is omitted the tasks file is discovered relative to that workspace.
-- `--prompt` defaults to `$HOME/.prompts/autonomous-senior-engineer.prompt.md`; the CLI validates the file exists before running.
+- `--prompt` defaults to `prompts/autonomous-senior-engineer.prompt.md` under the workspace; the CLI validates the file exists before running.
 - `--command-path` defaults to `internal` (the Rust task agent). You can point it at another executable for testing or for delegating work to a different task agent binary.
 - Every iteration forwards the resolved `--tasks`, `--workspace`, and `--prompt` values to the configured task agent so the behavior stays consistent with the legacy workflow.
 - `--assignee` is forwarded to external task agents when `--command-path` is not `internal`.

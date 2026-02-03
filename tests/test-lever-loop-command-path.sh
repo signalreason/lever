@@ -11,10 +11,9 @@ require_cmd git
 
 repo_root="$(cd "$TEST_DIR/.." && pwd)"
 repo_dir="$(make_temp_dir)"
-home_dir="$(make_temp_dir)"
 stub_dir="$(make_temp_dir)"
 args_dir="$(make_temp_dir)"
-trap 'rm -rf "$repo_dir" "$home_dir" "$stub_dir" "$args_dir"' EXIT
+trap 'rm -rf "$repo_dir" "$stub_dir" "$args_dir"' EXIT
 cat > "$repo_dir/prd.json" <<'JSON'
 {
   "tasks": [
@@ -43,11 +42,8 @@ JSON
 init_git_repo "$repo_dir"
 workspace_real="$(cd "$repo_dir" && pwd -P)"
 
-mkdir -p "$home_dir/.prompts"
-cat > "$home_dir/.prompts/autonomous-senior-engineer.prompt.md" <<'EOF2'
-Test prompt
-EOF2
-prompt_real="$(cd "$home_dir" && pwd -P)/.prompts/autonomous-senior-engineer.prompt.md"
+ensure_workspace_prompt "$repo_dir"
+prompt_real="$workspace_real/prompts/autonomous-senior-engineer.prompt.md"
 
 mkdir -p "$stub_dir"
 cat > "$stub_dir/loop-stub" <<'EOF2'
@@ -66,7 +62,6 @@ args_file="$args_dir/args.txt"
 )
 lever_bin="$repo_root/target/debug/lever"
 
-HOME="$home_dir" \
 ARGS_FILE="$args_file" "$lever_bin" \
   --workspace "$repo_dir" \
   --tasks prd.json \
@@ -99,7 +94,7 @@ if ! grep -Fxq -- "--prompt" "$args_file"; then
   exit 1
 fi
 if ! grep -Fxq -- "$prompt_real" "$args_file"; then
-  echo "Expected prompt path to use the default ~/.prompts location" >&2
+  echo "Expected prompt path to use the default workspace prompts location" >&2
   exit 1
 fi
 

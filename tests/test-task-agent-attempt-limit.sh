@@ -12,8 +12,7 @@ require_cmd jq
 repo_root="$(cd "$TEST_DIR/.." && pwd)"
 repo_dir="$(make_temp_dir)"
 stub_bin="$(make_temp_dir)"
-home_dir="$(make_temp_dir)"
-trap 'rm -rf "$repo_dir" "$stub_bin" "$home_dir"' EXIT
+trap 'rm -rf "$repo_dir" "$stub_bin"' EXIT
 
 cat > "$repo_dir/prd.json" <<'JSON'
 {
@@ -40,10 +39,7 @@ cat > "$repo_dir/prd.json" <<'JSON'
 }
 JSON
 
-mkdir -p "$home_dir/.prompts"
-cat > "$home_dir/.prompts/autonomous-senior-engineer.prompt.md" <<'PROMPT'
-Test prompt
-PROMPT
+ensure_workspace_prompt "$repo_dir"
 
 cat > "$repo_dir/README.md" <<'README'
 Test repo
@@ -74,7 +70,6 @@ cargo build --quiet --manifest-path "$repo_root/Cargo.toml"
 lever_bin="$repo_root/target/debug/lever"
 
 set +e
-HOME="$home_dir" \
 PATH="$stub_bin:$PATH" \
 CODEX_CALLED_FILE="$repo_dir/codex-called.log" \
   GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.com \
