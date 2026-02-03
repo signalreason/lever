@@ -702,6 +702,13 @@ fn run_loop_iterations(
                 }));
             }
             Some(130) => {
+                if shutdown_flag.load(Ordering::SeqCst) {
+                    println!(
+                        "lever: shutdown requested during task-agent execution (iteration {})",
+                        iteration
+                    );
+                    break;
+                }
                 return Err(Box::new(TaskAgentExit {
                     command: config.command_path.clone(),
                     status,
@@ -732,11 +739,30 @@ fn run_loop_iterations(
         }
 
         if delay > Duration::ZERO {
-            std::thread::sleep(delay);
+            if sleep_with_shutdown(delay, shutdown_flag) {
+                println!(
+                    "lever: shutdown requested during delay before iteration {}",
+                    iteration + 1
+                );
+                break;
+            }
         }
     }
 
     Ok(())
+}
+
+fn sleep_with_shutdown(delay: Duration, shutdown_flag: &AtomicBool) -> bool {
+    let start = std::time::Instant::now();
+    while start.elapsed() < delay {
+        if shutdown_flag.load(Ordering::SeqCst) {
+            return true;
+        }
+        let remaining = delay.saturating_sub(start.elapsed());
+        let nap = remaining.min(Duration::from_millis(100));
+        std::thread::sleep(nap);
+    }
+    false
 }
 
 fn run_once(
