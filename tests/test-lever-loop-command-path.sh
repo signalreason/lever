@@ -102,3 +102,12 @@ if ! grep -Fxq -- "$prompt_real" "$args_file"; then
   echo "Expected prompt path to use the default ~/.prompts location" >&2
   exit 1
 fi
+
+if ! grep -Fxq -- "--assignee" "$args_file"; then
+  echo "Expected --assignee to be passed to task agent" >&2
+  exit 1
+fi
+if ! grep -Fxq -- "test-assignee" "$args_file"; then
+  echo "Expected assignee value to be passed to task agent" >&2
+  exit 1
+fi
