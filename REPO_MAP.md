@@ -22,7 +22,7 @@
 - `tests/run.sh` — runs every `tests/test-*.sh` script.
 - `tests/test-lever-task-agent.sh` — integration test for `lever` running the internal task agent.
 - `tests/test-task-agent.sh` — smoke test for task completion and status update via `lever`.
-- `tests/test-ralph-loop.sh` — validates loop argument propagation to a stubbed task agent.
+- `tests/test-lever-loop-command-path.sh` — validates loop argument propagation to a stubbed command path.
 - `tests/test-verification.sh` — verifies hook selection behavior via `lever`.
 
 ## Key behaviors to audit

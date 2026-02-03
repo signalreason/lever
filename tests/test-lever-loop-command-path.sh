@@ -20,7 +20,7 @@ cat > "$repo_dir/prd.json" <<'JSON'
   "tasks": [
     {
       "task_id": "T1",
-      "title": "Ralph loop stub",
+      "title": "Lever loop stub",
       "status": "unstarted",
       "model": "gpt-5.1-codex-mini",
       "definition_of_done": [
@@ -32,7 +32,7 @@ cat > "$repo_dir/prd.json" <<'JSON'
       "observability": {
         "run_attempts": 0,
         "last_note": "",
-        "last_run_id": "ralph-loop-init",
+        "last_run_id": "lever-loop-init",
         "last_update_utc": "2026-02-01T00:00:00Z"
       }
     }
@@ -50,13 +50,13 @@ EOF2
 prompt_real="$(cd "$home_dir" && pwd -P)/.prompts/autonomous-senior-engineer.prompt.md"
 
 mkdir -p "$stub_dir"
-cat > "$stub_dir/task-agent" <<'EOF2'
+cat > "$stub_dir/loop-stub" <<'EOF2'
 #!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$@" > "${ARGS_FILE}"
 exit 3
 EOF2
-chmod +x "$stub_dir/task-agent"
+chmod +x "$stub_dir/loop-stub"
 
 args_file="$args_dir/args.txt"
 
@@ -70,7 +70,7 @@ HOME="$home_dir" \
 ARGS_FILE="$args_file" "$lever_bin" \
   --workspace "$repo_dir" \
   --tasks prd.json \
-  --command-path "$stub_dir/task-agent" \
+  --command-path "$stub_dir/loop-stub" \
   --assignee test-assignee \
   --loop 1 \
   --delay 0 \

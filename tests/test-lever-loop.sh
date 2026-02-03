@@ -149,6 +149,136 @@ EOF2
   rm -rf "$workspace" "$home_dir" "$log_dir"
 }
 
+run_no_remaining_tasks_stop() {
+  local workspace
+  workspace="$(make_temp_dir)"
+  local home_dir
+  home_dir="$(make_temp_dir)"
+  local log_dir
+  log_dir="$(make_temp_dir)"
+
+  cat > "$workspace/prd.json" <<'JSON'
+{
+  "tasks": [
+    {
+      "task_id": "loop-complete-1",
+      "title": "Completed task",
+      "model": "gpt-5.1-codex-mini",
+      "status": "completed",
+      "definition_of_done": [
+        "No remaining tasks to drive"
+      ],
+      "recommended": {
+        "approach": "Stop immediately when no tasks remain."
+      }
+    }
+  ]
+}
+JSON
+
+  init_git_repo "$workspace"
+
+  mkdir -p "$home_dir/.prompts"
+  cat > "$home_dir/.prompts/autonomous-senior-engineer.prompt.md" <<'EOF2'
+Test prompt
+EOF2
+
+  local log="$log_dir/no-remaining.log"
+
+  HOME="$home_dir" \
+  PATH="$stub_dir:$PATH" \
+    GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.com \
+    GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.com \
+    "$lever_bin" \
+    --workspace "$workspace" \
+    --tasks "$workspace/prd.json" \
+    --loop 1 \
+    > "$log" 2>&1
+
+  if ! grep -q "lever: no remaining tasks to drive." "$log"; then
+    echo "missing no remaining tasks stop message" >&2
+    exit 1
+  fi
+
+  if [[ -d "$workspace/.ralph/runs" ]]; then
+    local run_count
+    run_count="$(find "$workspace/.ralph/runs" -mindepth 2 -maxdepth 2 -type d | wc -l | tr -d ' ')"
+    if [[ "$run_count" -ne 0 ]]; then
+      echo "expected zero iterations when no tasks remain, got $run_count" >&2
+      exit 1
+    fi
+  fi
+
+  rm -rf "$workspace" "$home_dir" "$log_dir"
+}
+
+run_human_stop_reason() {
+  local workspace
+  workspace="$(make_temp_dir)"
+  local home_dir
+  home_dir="$(make_temp_dir)"
+  local log_dir
+  log_dir="$(make_temp_dir)"
+
+  cat > "$workspace/prd.json" <<'JSON'
+{
+  "tasks": [
+    {
+      "task_id": "loop-human-1",
+      "title": "Human task",
+      "model": "human",
+      "status": "unstarted",
+      "definition_of_done": [
+        "Stop when human input is required"
+      ],
+      "recommended": {
+        "approach": "Return a stop reason before running codex."
+      }
+    }
+  ]
+}
+JSON
+
+  init_git_repo "$workspace"
+
+  mkdir -p "$home_dir/.prompts"
+  cat > "$home_dir/.prompts/autonomous-senior-engineer.prompt.md" <<'EOF2'
+Test prompt
+EOF2
+
+  local log="$log_dir/human-stop.log"
+
+  set +e
+  HOME="$home_dir" \
+  PATH="$stub_dir:$PATH" \
+    GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.com \
+    GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.com \
+    "$lever_bin" \
+    --workspace "$workspace" \
+    --tasks "$workspace/prd.json" \
+    --loop 1 \
+    > "$log" 2>&1
+  local status=$?
+  set -e
+
+  if [[ $status -eq 0 ]]; then
+    echo "expected non-zero exit for human stop reason" >&2
+    exit 1
+  fi
+
+  if ! grep -q "Next task loop-human-1 requires human input" "$log"; then
+    echo "missing human stop reason message" >&2
+    exit 1
+  fi
+
+  if grep -q "lever: --loop limit reached" "$log"; then
+    echo "unexpected loop limit message for human stop reason" >&2
+    exit 1
+  fi
+
+  rm -rf "$workspace" "$home_dir" "$log_dir"
+}
+
 run_continuous_case() {
   local name="$1"
   shift
@@ -244,5 +374,7 @@ EOF2
 }
 
 run_loop_limit_test 2
+run_no_remaining_tasks_stop
+run_human_stop_reason
 run_continuous_case "flag-no-value" "--loop"
 run_continuous_case "explicit-zero" "--loop" "0"

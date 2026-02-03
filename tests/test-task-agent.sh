@@ -20,7 +20,7 @@ cat > "$repo_dir/prd.json" <<'JSON'
   "tasks": [
     {
       "task_id": "T1",
-      "title": "Task agent smoke test",
+      "title": "Lever smoke test",
       "status": "unstarted",
       "model": "gpt-5.1-codex-mini",
       "definition_of_done": [
@@ -32,7 +32,7 @@ cat > "$repo_dir/prd.json" <<'JSON'
       "observability": {
         "run_attempts": 0,
         "last_note": "",
-        "last_run_id": "task-agent-init",
+        "last_run_id": "lever-init",
         "last_update_utc": "2026-02-01T00:00:00Z"
       }
     }
