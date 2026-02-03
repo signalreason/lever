@@ -127,28 +127,3 @@ Minimal compliant example:
       }
     }
 ```
-
-### use quality commit messages
-the current commit messages are only useful for debugging. use the task title
-for commit messages, and follow this commit message spec:
-
-```
-{
-  "id": "cbea.git-commit.compact.v1",
-  "message_format": "<subject>\n\n<body?>",
-  "subject": {
-    "single_line": true,
-    "max_chars": 50,
-    "capitalize_first_char": true,
-    "no_trailing_period": true,
-    "mood": "imperative",
-    "imperative_test_prefix": "If applied, this commit will "
-  },
-  "body": {
-    "present_requires_blank_line_after_subject": true,
-    "wrap_hard_at": 72,
-    "focus": ["what", "why"],
-    "deprioritize": ["how"]
-  }
-}
-```

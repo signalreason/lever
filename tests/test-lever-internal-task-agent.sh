@@ -116,7 +116,7 @@ if git -C "$repo_dir" show-ref --verify --quiet refs/heads/ralph/T1; then
 fi
 
 subject="$(git -C "$repo_dir" log -1 --pretty=%s)"
-if [[ "$subject" != ralph\(T1\):\ complete\ \(run* ]]; then
+if [[ "$subject" != "Leverage the internal task-agent" ]]; then
   echo "Expected completion commit subject, got: $subject" >&2
   exit 1
 fi

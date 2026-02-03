@@ -99,12 +99,7 @@ pub fn run_task_agent(
                 current_attempts, MAX_RUN_ATTEMPTS
             ),
         )?;
-        git_commit_progress(
-            &config.workspace,
-            &selection.task_id,
-            &run_id,
-            &format!("ralph({}): run {} blocked (attempt limit)", selection.task_id, run_id),
-        )?;
+        git_commit_progress(&config.workspace, &selection.title, &selection.task_id)?;
         log_line(
             "WARN",
             "Attempt limit reached",
@@ -150,6 +145,7 @@ pub fn run_task_agent(
             &config.tasks_path,
             &config.workspace,
             &selection.task_id,
+            &selection.title,
             &run_id,
             run_attempt,
         );
@@ -196,6 +192,7 @@ pub fn run_task_agent(
             &config.tasks_path,
             &config.workspace,
             &selection.task_id,
+            &selection.title,
             &run_id,
             run_attempt,
         );
@@ -239,6 +236,7 @@ pub fn run_task_agent(
                 &config.tasks_path,
                 &config.workspace,
                 &selection.task_id,
+                &selection.title,
                 &run_id,
                 run_attempt,
             );
@@ -286,12 +284,7 @@ pub fn run_task_agent(
                 codex_log_rel.display()
             ),
         )?;
-        git_commit_progress(
-            &config.workspace,
-            &selection.task_id,
-            &run_id,
-            &format!("ralph({}): run {} blocked (no result)", selection.task_id, run_id),
-        )?;
+        git_commit_progress(&config.workspace, &selection.title, &selection.task_id)?;
         log_line(
             "ERROR",
             "Missing result.json",
@@ -423,13 +416,8 @@ pub fn run_task_agent(
             &run_id,
             &format!("Run {} completed", run_id),
         )?;
-        git_commit_progress(
-            &config.workspace,
-            &selection.task_id,
-            &run_id,
-            &format!("ralph({}): run {} completed", selection.task_id, run_id),
-        )?;
-        finalize_successful_task(&config.workspace, &selection.task_id, &run_id)?;
+        git_commit_progress(&config.workspace, &selection.title, &selection.task_id)?;
+        finalize_successful_task(&config.workspace, &selection.task_id, &selection.title)?;
         log_line(
             "INFO",
             "Run completed",
@@ -457,12 +445,7 @@ pub fn run_task_agent(
             &run_id,
             &format!("Run {} blocked. See {}", run_id, result_path_rel.display()),
         )?;
-        git_commit_progress(
-            &config.workspace,
-            &selection.task_id,
-            &run_id,
-            &format!("ralph({}): run {} blocked", selection.task_id, run_id),
-        )?;
+        git_commit_progress(&config.workspace, &selection.title, &selection.task_id)?;
         log_line(
             "WARN",
             "Run blocked",
@@ -496,12 +479,7 @@ pub fn run_task_agent(
         &run_id,
         &note,
     )?;
-    git_commit_progress(
-        &config.workspace,
-        &selection.task_id,
-        &run_id,
-        &format!("ralph({}): run {} progress", selection.task_id, run_id),
-    )?;
+    git_commit_progress(&config.workspace, &selection.title, &selection.task_id)?;
     log_line(
         "INFO",
         "Run started/progress",
@@ -903,17 +881,13 @@ fn handle_interrupt(
     tasks_path: &Path,
     workspace: &Path,
     task_id: &str,
+    task_title: &str,
     run_id: &str,
     run_attempt: u64,
 ) -> Result<i32, DynError> {
     let note = format!("Run {} interrupted on attempt {}", run_id, run_attempt);
     update_task_status(tasks_path, task_id, "started", run_id, &note)?;
-    git_commit_progress(
-        workspace,
-        task_id,
-        run_id,
-        &format!("ralph({}): run {} interrupted", task_id, run_id),
-    )?;
+    git_commit_progress(workspace, task_title, task_id)?;
     log_line(
         "WARN",
         "Run interrupted",
@@ -1063,30 +1037,76 @@ fn git_status(workspace: &Path, args: &[&str]) -> Result<(), DynError> {
     }
 }
 
-fn git_commit_progress(
-    workspace: &Path,
-    task_id: &str,
-    run_id: &str,
-    message: &str,
-) -> Result<(), DynError> {
+fn commit_subject_from_title(title: &str, task_id: &str) -> String {
+    let normalized = title.replace('\n', " ").replace('\r', " ");
+    let mut subject = normalized.split_whitespace().collect::<Vec<_>>().join(" ");
+    subject = subject.trim_end_matches('.').trim().to_string();
+    if subject.is_empty() {
+        subject = format!("Update {}", task_id);
+    }
+    subject = truncate_commit_subject(&subject, 50);
+    subject = subject.trim_end_matches('.').trim().to_string();
+    if subject.is_empty() {
+        subject = format!("Update {}", task_id);
+    }
+    capitalize_first_char(subject)
+}
+
+fn truncate_commit_subject(subject: &str, max_chars: usize) -> String {
+    let mut count = 0;
+    let mut end_byte = 0;
+    let mut last_space = None;
+    for (idx, ch) in subject.char_indices() {
+        if count == max_chars {
+            break;
+        }
+        if ch.is_whitespace() {
+            last_space = Some(idx);
+        }
+        count += 1;
+        end_byte = idx + ch.len_utf8();
+    }
+    if count < max_chars {
+        return subject.to_string();
+    }
+    let cut = last_space.unwrap_or(end_byte);
+    subject[..cut].trim_end().to_string()
+}
+
+fn capitalize_first_char(subject: String) -> String {
+    let mut chars = subject.chars();
+    let Some(first) = chars.next() else {
+        return subject;
+    };
+    if first.is_ascii_lowercase() {
+        let mut updated = String::new();
+        updated.push(first.to_ascii_uppercase());
+        updated.extend(chars);
+        updated
+    } else {
+        subject
+    }
+}
+
+fn git_commit_progress(workspace: &Path, task_title: &str, task_id: &str) -> Result<(), DynError> {
     let status = git_output(workspace, &["status", "--porcelain"])?;
     if status.trim().is_empty() {
         return Ok(());
     }
-    let message = if message.is_empty() {
-        format!("ralph({}): progress run {}", task_id, run_id)
-    } else {
-        message.to_string()
-    };
+    let message = commit_subject_from_title(task_title, task_id);
     git_status(workspace, &["add", "-A"])?;
     git_status(workspace, &["commit", "-m", &message])?;
     Ok(())
 }
 
-fn finalize_successful_task(workspace: &Path, task_id: &str, run_id: &str) -> Result<(), DynError> {
+fn finalize_successful_task(
+    workspace: &Path,
+    task_id: &str,
+    task_title: &str,
+) -> Result<(), DynError> {
     let task_branch = format!("ralph/{}", task_id);
     let base_branch = base_branch();
-    let msg = format!("ralph({}): complete (run {})", task_id, run_id);
+    let msg = commit_subject_from_title(task_title, task_id);
 
     git_status(workspace, &["checkout", &task_branch])?;
     let _ = git_status(workspace, &["rebase", &base_branch]);

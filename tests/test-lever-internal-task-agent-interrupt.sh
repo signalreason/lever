@@ -106,7 +106,7 @@ if [[ "$note" != *interrupted* ]]; then
 fi
 
 subject="$(git -C "$repo_dir" log -1 --pretty=%s)"
-if [[ "$subject" != ralph\(T1\):\ run*interrupted* ]]; then
+if [[ "$subject" != "Interrupt internal task-agent" ]]; then
   echo "Expected interrupt commit subject, got: $subject" >&2
   exit 1
 fi
