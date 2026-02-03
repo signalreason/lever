@@ -63,6 +63,7 @@ run_loop_limit_test() {
   : > "$invocations"
 
   LOG_PATH="$invocations" SLEEP_DURATION=0.01 "$lever_bin" \
+    --workspace "$workspace" \
     --tasks "$workspace/prd.json" \
     --loop "$limit" \
     --command-path "$stub" \
@@ -95,6 +96,7 @@ run_continuous_case() {
   : > "$invocations"
 
   LOG_PATH="$invocations" SLEEP_DURATION=0.3 "$lever_bin" \
+    --workspace "$workspace" \
     --tasks "$workspace/prd.json" \
     "${loop_args[@]}" \
     --command-path "$stub" \

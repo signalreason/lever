@@ -44,7 +44,7 @@ init_git_repo "$repo_dir"
 
 set +e
 output="$(MARKER_FILE="$marker_file" cargo run --quiet --manifest-path "$TEST_DIR/../Cargo.toml" \
-  -- --tasks "$repo_dir/prd.json" --prompt "$repo_dir/prompt.md" --command-path "$repo_dir/stub-cmd" 2>&1)"
+  -- --workspace "$repo_dir" --tasks "$repo_dir/prd.json" --prompt "$repo_dir/prompt.md" --command-path "$repo_dir/stub-cmd" 2>&1)"
 status=$?
 set -e
 
