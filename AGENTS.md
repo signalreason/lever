@@ -34,3 +34,7 @@ This repo is Rust-first with bash test harnesses. You need `bash`, `cargo`, `jq`
 ## Configuration & Artifacts
 - The task agent writes run artifacts under `.ralph/` (e.g., `./.ralph/runs/...`).
 - Treat task JSON as the source of truth; avoid editing run artifacts by hand.
+
+## Change Management
+- Any edits to `prd.json` must remain compliant with `prd.schema.json`.
+- When making changes of any kind, check `README.md` and `AGENTS.md` to see if they need updates.
