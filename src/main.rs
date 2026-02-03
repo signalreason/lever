@@ -755,7 +755,8 @@ fn run_once(
             reset_task: config.reset_task,
             explicit_task_id: config.explicit_task_id.clone(),
         };
-        let exit_code = task_agent::run_task_agent(&agent_config, task_id_override, allow_next)?;
+        let exit_code =
+            task_agent::run_task_agent(&agent_config, task_id_override, allow_next, Some(shutdown_flag))?;
         let status = exit_status_from_code(exit_code);
         if shutdown_flag.load(Ordering::SeqCst) && matches!(status.code(), Some(130)) {
             return Ok(status);
