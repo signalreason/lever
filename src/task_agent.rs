@@ -2,9 +2,14 @@ use std::{
     error::Error,
     fs,
     fs::File,
-    io::{self, BufRead, Read},
+    io::{self, BufRead, Read, Write, IsTerminal},
     path::{Path, PathBuf},
     process::Command,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    thread,
     time::Duration,
 };
 
@@ -32,6 +37,7 @@ pub fn run_task_agent(
     config: &TaskAgentConfig,
     task_id_override: Option<&str>,
     allow_next: bool,
+    shutdown_flag: Option<&AtomicBool>,
 ) -> Result<i32, DynError> {
     let requested_task_id = task_id_override.or(config.explicit_task_id.as_deref());
     if requested_task_id.is_none() && !allow_next {
@@ -44,6 +50,18 @@ pub fn run_task_agent(
         Ok(task) => task,
         Err(exit_code) => return Ok(exit_code),
     };
+
+    log_line(
+        "INFO",
+        "Task selected",
+        &[
+            format!("task_id={}", selection.task_id),
+            format!("title={}", selection.title),
+            format!("model={}", selection.model),
+            format!("status={}", selection.status),
+            format!("dod_count={}", selection.definition_of_done.len()),
+        ],
+    );
 
     if let Err(err) = validate_task_metadata(&selection.task_id, &selection.raw) {
         eprintln!("{}", err);
@@ -81,6 +99,21 @@ pub fn run_task_agent(
                 current_attempts, MAX_RUN_ATTEMPTS
             ),
         )?;
+        git_commit_progress(
+            &config.workspace,
+            &selection.task_id,
+            &run_id,
+            &format!("ralph({}): run {} blocked (attempt limit)", selection.task_id, run_id),
+        )?;
+        log_line(
+            "WARN",
+            "Attempt limit reached",
+            &[
+                format!("task_id={}", selection.task_id),
+                format!("run_id={}", run_id),
+                format!("attempts={}", current_attempts),
+            ],
+        );
         eprintln!(
             "Blocked: {} reached attempt limit ({}/{}).",
             selection.task_id, current_attempts, MAX_RUN_ATTEMPTS
@@ -112,6 +145,27 @@ pub fn run_task_agent(
         )?;
     }
 
+    if is_shutdown(shutdown_flag) {
+        return handle_interrupt(
+            &config.tasks_path,
+            &config.workspace,
+            &selection.task_id,
+            &run_id,
+            run_attempt,
+        );
+    }
+
+    log_line(
+        "INFO",
+        "Run started",
+        &[
+            format!("task_id={}", selection.task_id),
+            format!("title={}", selection.title),
+            format!("run_id={}", run_id),
+            format!("assignee={}", std::env::var("ASSIGNEE").unwrap_or_default()),
+        ],
+    );
+
     let prompt_path = run_dir_abs.join("prompt.md");
     build_prompt(
         &config.prompt_path,
@@ -127,15 +181,38 @@ pub fn run_task_agent(
     let codex_log_rel = run_dir_rel.join("codex.jsonl");
     let codex_log_abs = config.workspace.join(&codex_log_rel);
 
+    let codex_stream = CodexLogStream::start(&codex_log_abs, &selection.task_id, &run_id)?;
+
     let estimated_tokens = rate_limit::estimate_prompt_tokens(&prompt_path);
     rate_limit_sleep(
         &config.workspace.join(RATE_LIMIT_FILE),
         &selection.model,
         estimated_tokens,
+        shutdown_flag,
     )?;
+    if is_shutdown(shutdown_flag) {
+        codex_stream.stop();
+        return handle_interrupt(
+            &config.tasks_path,
+            &config.workspace,
+            &selection.task_id,
+            &run_id,
+            run_attempt,
+        );
+    }
 
     let mut codex_exit = 1;
-    for _ in 0..3 {
+    for attempt in 1..=3 {
+        log_line(
+            "INFO",
+            "Codex exec start",
+            &[
+                format!("task_id={}", selection.task_id),
+                format!("run_id={}", run_id),
+                format!("attempt={}", attempt),
+                format!("model={}", selection.model),
+            ],
+        );
         codex_exit = run_codex(
             &config.workspace,
             &selection.model,
@@ -143,7 +220,29 @@ pub fn run_task_agent(
             Path::new(SCHEMA_PATH),
             &result_path_rel,
             &codex_log_rel,
+            shutdown_flag,
         )?;
+        log_line(
+            "INFO",
+            "Codex exec end",
+            &[
+                format!("task_id={}", selection.task_id),
+                format!("run_id={}", run_id),
+                format!("attempt={}", attempt),
+                format!("exit={}", codex_exit),
+            ],
+        );
+
+        if codex_exit == 130 || is_shutdown(shutdown_flag) {
+            codex_stream.stop();
+            return handle_interrupt(
+                &config.tasks_path,
+                &config.workspace,
+                &selection.task_id,
+                &run_id,
+                run_attempt,
+            );
+        }
 
         if result_path_abs.is_file() && result_path_abs.metadata().map(|m| m.len()).unwrap_or(0) > 0
         {
@@ -152,7 +251,10 @@ pub fn run_task_agent(
 
         if let Some(delay) = rate_limit_retry_delay(&codex_log_abs)? {
             if delay > 0 {
-                eprintln!("Rate limit retry: sleeping {}s before retry.", delay);
+                eprintln!(
+                    "Rate limit retry: sleeping {}s before retry {}/3.",
+                    delay, attempt
+                );
                 std::thread::sleep(Duration::from_secs(delay));
             }
             continue;
@@ -160,6 +262,8 @@ pub fn run_task_agent(
 
         break;
     }
+
+    codex_stream.stop();
 
     let tokens_used = parse_usage_tokens(&codex_log_abs).unwrap_or(estimated_tokens);
     record_rate_usage(
@@ -182,6 +286,21 @@ pub fn run_task_agent(
                 codex_log_rel.display()
             ),
         )?;
+        git_commit_progress(
+            &config.workspace,
+            &selection.task_id,
+            &run_id,
+            &format!("ralph({}): run {} blocked (no result)", selection.task_id, run_id),
+        )?;
+        log_line(
+            "ERROR",
+            "Missing result.json",
+            &[
+                format!("task_id={}", selection.task_id),
+                format!("run_id={}", run_id),
+                format!("exit={}", codex_exit),
+            ],
+        );
         eprintln!(
             "Blocked: missing result.json. See {}",
             codex_log_rel.display()
@@ -197,11 +316,104 @@ pub fn run_task_agent(
         .to_string();
     let dod_met = result.get("dod_met").and_then(Value::as_bool).unwrap_or(false);
 
+    if let Some(summary) = result.get("summary").and_then(Value::as_str) {
+        if !summary.trim().is_empty() {
+            log_line(
+                "INFO",
+                &format!("Result summary: {}", compact_text(summary, 220)),
+                &[
+                    format!("task_id={}", selection.task_id),
+                    format!("run_id={}", run_id),
+                    format!("outcome={}", outcome),
+                    format!("dod_met={}", dod_met),
+                    format!(
+                        "tests_ran={}",
+                        result
+                            .get("tests")
+                            .and_then(Value::as_object)
+                            .and_then(|tests| tests.get("ran"))
+                            .and_then(Value::as_bool)
+                            .unwrap_or(false)
+                    ),
+                    format!(
+                        "tests_passed={}",
+                        result
+                            .get("tests")
+                            .and_then(Value::as_object)
+                            .and_then(|tests| tests.get("passed"))
+                            .and_then(Value::as_bool)
+                            .unwrap_or(false)
+                    ),
+                ],
+            );
+        }
+    }
+
+    if !dod_met {
+        let notes = result.get("notes").and_then(Value::as_str).unwrap_or("");
+        if !notes.trim().is_empty() {
+            log_line(
+                "WARN",
+                &format!(
+                    "Definition of done not met: {}",
+                    compact_text(notes, 220)
+                ),
+                &[
+                    format!("task_id={}", selection.task_id),
+                    format!("run_id={}", run_id),
+                    format!("outcome={}", outcome),
+                ],
+            );
+        } else {
+            log_line(
+                "WARN",
+                "Definition of done not met",
+                &[
+                    format!("task_id={}", selection.task_id),
+                    format!("run_id={}", run_id),
+                    format!("outcome={}", outcome),
+                ],
+            );
+        }
+    }
+
     let verify = if outcome == "completed" && dod_met {
         run_verification(&config.workspace, &run_dir_abs)?
     } else {
         VerificationResult::skipped()
     };
+
+    if verify.log_command.as_deref().unwrap_or("").is_empty() == false {
+        if verify.ok {
+            log_line(
+                "INFO",
+                "Verification succeeded",
+                &[
+                    format!("task_id={}", selection.task_id),
+                    format!("run_id={}", run_id),
+                    format!("command={}", verify.log_command.as_deref().unwrap_or("")),
+                    format!(
+                        "log={}",
+                        run_dir_abs.join("verify.log").display()
+                    ),
+                ],
+            );
+        } else {
+            log_line(
+                "WARN",
+                "Verification failed",
+                &[
+                    format!("task_id={}", selection.task_id),
+                    format!("run_id={}", run_id),
+                    format!("command={}", verify.log_command.as_deref().unwrap_or("")),
+                    format!(
+                        "log={}",
+                        run_dir_abs.join("verify.log").display()
+                    ),
+                ],
+            );
+        }
+    }
 
     if outcome == "completed" && dod_met && verify.ok {
         update_task_status(
@@ -211,6 +423,29 @@ pub fn run_task_agent(
             &run_id,
             &format!("Run {} completed", run_id),
         )?;
+        git_commit_progress(
+            &config.workspace,
+            &selection.task_id,
+            &run_id,
+            &format!("ralph({}): run {} completed", selection.task_id, run_id),
+        )?;
+        finalize_successful_task(&config.workspace, &selection.task_id, &run_id)?;
+        log_line(
+            "INFO",
+            "Run completed",
+            &[
+                format!("task_id={}", selection.task_id),
+                format!("run_id={}", run_id),
+                format!("verify_ok={}", verify.ok),
+            ],
+        );
+        print_line(
+            true,
+            &format!(
+                "COMPLETED {} (model={}, run={})",
+                selection.task_id, selection.model, run_id
+            ),
+        );
         return Ok(0);
     }
 
@@ -222,6 +457,27 @@ pub fn run_task_agent(
             &run_id,
             &format!("Run {} blocked. See {}", run_id, result_path_rel.display()),
         )?;
+        git_commit_progress(
+            &config.workspace,
+            &selection.task_id,
+            &run_id,
+            &format!("ralph({}): run {} blocked", selection.task_id, run_id),
+        )?;
+        log_line(
+            "WARN",
+            "Run blocked",
+            &[
+                format!("task_id={}", selection.task_id),
+                format!("run_id={}", run_id),
+            ],
+        );
+        print_line(
+            false,
+            &format!(
+                "BLOCKED {} (model={}, run={})",
+                selection.task_id, selection.model, run_id
+            ),
+        );
         return Ok(11);
     }
 
@@ -240,6 +496,30 @@ pub fn run_task_agent(
         &run_id,
         &note,
     )?;
+    git_commit_progress(
+        &config.workspace,
+        &selection.task_id,
+        &run_id,
+        &format!("ralph({}): run {} progress", selection.task_id, run_id),
+    )?;
+    log_line(
+        "INFO",
+        "Run started/progress",
+        &[
+            format!("task_id={}", selection.task_id),
+            format!("run_id={}", run_id),
+            format!("outcome={}", outcome),
+            format!("dod_met={}", dod_met),
+            format!("verify_ok={}", verify.ok),
+        ],
+    );
+    print_line(
+        false,
+        &format!(
+            "STARTED {} (model={}, run={})",
+            selection.task_id, selection.model, run_id
+        ),
+    );
     Ok(12)
 }
 
@@ -373,7 +653,12 @@ fn run_id() -> Result<String, DynError> {
 }
 
 fn utc_timestamp(format: &str) -> Result<String, DynError> {
-    let output = Command::new("date").arg("-u").arg(format).output()?;
+    let format = if format.starts_with('+') {
+        format.to_string()
+    } else {
+        format!("+{}", format)
+    };
+    let output = Command::new("date").arg("-u").arg(&format).output()?;
     if !output.status.success() {
         return Err(format!("date command failed for format {}", format).into());
     }
@@ -446,7 +731,12 @@ fn build_prompt(
     Ok(())
 }
 
-fn rate_limit_sleep(rate_file: &Path, model: &str, estimated_tokens: u64) -> Result<(), DynError> {
+fn rate_limit_sleep(
+    rate_file: &Path,
+    model: &str,
+    estimated_tokens: u64,
+    shutdown_flag: Option<&AtomicBool>,
+) -> Result<(), DynError> {
     let (tpm, rpm) = rate_limit::rate_limit_settings(model);
     let sleep_seconds = rate_limit::rate_limit_sleep_seconds(
         rate_file,
@@ -461,7 +751,19 @@ fn rate_limit_sleep(rate_file: &Path, model: &str, estimated_tokens: u64) -> Res
             "Rate limit throttle: sleeping {}s for {}.",
             sleep_seconds, model
         );
-        std::thread::sleep(Duration::from_secs(sleep_seconds));
+        if let Some(flag) = shutdown_flag {
+            let mut remaining = sleep_seconds;
+            while remaining > 0 {
+                if flag.load(Ordering::SeqCst) {
+                    break;
+                }
+                let chunk = std::cmp::min(1, remaining);
+                std::thread::sleep(Duration::from_secs(chunk));
+                remaining = remaining.saturating_sub(chunk);
+            }
+        } else {
+            std::thread::sleep(Duration::from_secs(sleep_seconds));
+        }
     }
     Ok(())
 }
@@ -482,12 +784,13 @@ fn run_codex(
     schema_path: &Path,
     result_path: &Path,
     log_path: &Path,
+    shutdown_flag: Option<&AtomicBool>,
 ) -> Result<i32, DynError> {
     let prompt_file = File::open(prompt_path)?;
     let log_file = File::create(workspace.join(log_path))?;
     let log_file_err = log_file.try_clone()?;
 
-    let status = Command::new("codex")
+    let mut child = Command::new("codex")
         .current_dir(workspace)
         .arg("exec")
         .arg("--yolo")
@@ -503,8 +806,22 @@ fn run_codex(
         .stdin(prompt_file)
         .stdout(log_file)
         .stderr(log_file_err)
-        .status()?;
-    Ok(status.code().unwrap_or(1))
+        .spawn()?;
+
+    loop {
+        if let Some(flag) = shutdown_flag {
+            if flag.load(Ordering::SeqCst) {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Ok(130);
+            }
+        }
+
+        match child.try_wait()? {
+            Some(status) => return Ok(status.code().unwrap_or(1)),
+            None => thread::sleep(Duration::from_millis(100)),
+        }
+    }
 }
 
 fn parse_usage_tokens(log_path: &Path) -> Option<u64> {
@@ -574,6 +891,216 @@ fn rate_limit_retry_delay(log_path: &Path) -> Result<Option<u64>, DynError> {
         }
     }
     Ok(None)
+}
+
+fn is_shutdown(shutdown_flag: Option<&AtomicBool>) -> bool {
+    shutdown_flag
+        .map(|flag| flag.load(Ordering::SeqCst))
+        .unwrap_or(false)
+}
+
+fn handle_interrupt(
+    tasks_path: &Path,
+    workspace: &Path,
+    task_id: &str,
+    run_id: &str,
+    run_attempt: u64,
+) -> Result<i32, DynError> {
+    let note = format!("Run {} interrupted on attempt {}", run_id, run_attempt);
+    update_task_status(tasks_path, task_id, "started", run_id, &note)?;
+    git_commit_progress(
+        workspace,
+        task_id,
+        run_id,
+        &format!("ralph({}): run {} interrupted", task_id, run_id),
+    )?;
+    log_line(
+        "WARN",
+        "Run interrupted",
+        &[
+            format!("task_id={}", task_id),
+            format!("run_id={}", run_id),
+            format!("attempt={}", run_attempt),
+        ],
+    );
+    Ok(130)
+}
+
+struct CodexLogStream {
+    stop: Arc<AtomicBool>,
+    handle: Option<thread::JoinHandle<()>>,
+}
+
+impl CodexLogStream {
+    fn start(log_path: &Path, task_id: &str, run_id: &str) -> Result<Self, DynError> {
+        if let Some(parent) = log_path.parent() {
+            if !parent.as_os_str().is_empty() {
+                fs::create_dir_all(parent)?;
+            }
+        }
+        let _ = File::create(log_path)?;
+
+        let stop = Arc::new(AtomicBool::new(false));
+        let stop_flag = Arc::clone(&stop);
+        let log_path = log_path.to_path_buf();
+        let task_id = task_id.to_string();
+        let run_id = run_id.to_string();
+
+        let handle = thread::spawn(move || {
+            let mut file = match File::open(&log_path) {
+                Ok(file) => file,
+                Err(_) => return,
+            };
+            let mut reader = io::BufReader::new(&mut file);
+            loop {
+                if stop_flag.load(Ordering::SeqCst) {
+                    break;
+                }
+                let mut line = String::new();
+                match reader.read_line(&mut line) {
+                    Ok(0) => {
+                        thread::sleep(Duration::from_millis(100));
+                        continue;
+                    }
+                    Ok(_) => {
+                        let trimmed = line.trim();
+                        if trimmed.is_empty() {
+                            continue;
+                        }
+                        let ts = utc_timestamp("%Y-%m-%dT%H:%M:%SZ")
+                            .unwrap_or_else(|_| "1970-01-01T00:00:00Z".to_string());
+                        let raw = compact_text(trimmed, 400);
+                        print_line(
+                            true,
+                            &format!(
+                                "{} INFO codex raw {} task_id={} run_id={}",
+                                ts, raw, task_id, run_id
+                            ),
+                        );
+                    }
+                    Err(_) => {
+                        thread::sleep(Duration::from_millis(100));
+                    }
+                }
+            }
+        });
+
+        Ok(Self {
+            stop,
+            handle: Some(handle),
+        })
+    }
+
+    fn stop(mut self) {
+        self.stop.store(true, Ordering::SeqCst);
+        if let Some(handle) = self.handle.take() {
+            let _ = handle.join();
+        }
+    }
+}
+
+fn compact_text(input: &str, limit: usize) -> String {
+    let mut normalized = input.replace('\n', " ").replace('\r', " ");
+    if normalized.len() > limit {
+        normalized.truncate(limit);
+        normalized.push_str("...");
+    }
+    normalized
+}
+
+fn log_line(level: &str, message: &str, kv: &[String]) {
+    let ts = utc_timestamp("%Y-%m-%dT%H:%M:%SZ")
+        .unwrap_or_else(|_| "1970-01-01T00:00:00Z".to_string());
+    let mut line = format!(
+        "{} {} task-agent {}",
+        ts,
+        level,
+        message.replace('\n', " ")
+    );
+    if !kv.is_empty() {
+        line.push(' ');
+        line.push_str(&kv.join(" "));
+    }
+    let prefer_stdout = !(level == "ERROR" || level == "WARN");
+    print_line(prefer_stdout, &line);
+}
+
+fn print_line(prefer_stdout: bool, line: &str) {
+    let use_stdout = prefer_stdout && io::stdout().is_terminal();
+    if use_stdout {
+        println!("{}", line);
+        let _ = io::stdout().flush();
+    } else {
+        eprintln!("{}", line);
+        let _ = io::stderr().flush();
+    }
+}
+
+fn git_output(workspace: &Path, args: &[&str]) -> Result<String, DynError> {
+    let output = Command::new("git")
+        .args(args)
+        .current_dir(workspace)
+        .output()
+        .map_err(|err| format!("Failed to run git {}: {}", args.join(" "), err))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("git {} failed: {}", args.join(" "), stderr.trim()).into());
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+fn git_status(workspace: &Path, args: &[&str]) -> Result<(), DynError> {
+    let output = Command::new("git")
+        .args(args)
+        .current_dir(workspace)
+        .output()
+        .map_err(|err| format!("Failed to run git {}: {}", args.join(" "), err))?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!("git {} failed: {}", args.join(" "), stderr.trim()).into())
+    }
+}
+
+fn git_commit_progress(
+    workspace: &Path,
+    task_id: &str,
+    run_id: &str,
+    message: &str,
+) -> Result<(), DynError> {
+    let status = git_output(workspace, &["status", "--porcelain"])?;
+    if status.trim().is_empty() {
+        return Ok(());
+    }
+    let message = if message.is_empty() {
+        format!("ralph({}): progress run {}", task_id, run_id)
+    } else {
+        message.to_string()
+    };
+    git_status(workspace, &["add", "-A"])?;
+    git_status(workspace, &["commit", "-m", &message])?;
+    Ok(())
+}
+
+fn finalize_successful_task(workspace: &Path, task_id: &str, run_id: &str) -> Result<(), DynError> {
+    let task_branch = format!("ralph/{}", task_id);
+    let base_branch = base_branch();
+    let msg = format!("ralph({}): complete (run {})", task_id, run_id);
+
+    git_status(workspace, &["checkout", &task_branch])?;
+    let _ = git_status(workspace, &["rebase", &base_branch]);
+    git_status(workspace, &["reset", "--soft", &base_branch])?;
+    git_status(workspace, &["add", "-A"])?;
+    git_status(workspace, &["commit", "-m", &msg])?;
+    git_status(workspace, &["checkout", &base_branch])?;
+    git_status(workspace, &["merge", "--ff-only", &task_branch])?;
+    git_status(workspace, &["branch", "-D", &task_branch])?;
+    Ok(())
+}
+
+fn base_branch() -> String {
+    std::env::var("BASE_BRANCH").unwrap_or_else(|_| "main".to_string())
 }
 
 fn load_tasks_root(path: &Path) -> Result<Value, DynError> {
@@ -722,11 +1249,15 @@ fn write_tasks_root(path: &Path, root: &Value) -> Result<(), DynError> {
 
 struct VerificationResult {
     ok: bool,
+    log_command: Option<String>,
 }
 
 impl VerificationResult {
     fn skipped() -> Self {
-        Self { ok: true }
+        Self {
+            ok: true,
+            log_command: None,
+        }
     }
 }
 
@@ -746,7 +1277,10 @@ fn run_verification(workspace: &Path, run_dir: &Path) -> Result<VerificationResu
     }
 
     let Some(cmd) = selected_cmd else {
-        return Ok(VerificationResult { ok: true });
+        return Ok(VerificationResult {
+            ok: true,
+            log_command: None,
+        });
     };
 
     let mut command = Command::new(&cmd[0]);
@@ -760,7 +1294,10 @@ fn run_verification(workspace: &Path, run_dir: &Path) -> Result<VerificationResu
         .status()?;
 
     let ok = status.success();
-    Ok(VerificationResult { ok })
+    Ok(VerificationResult {
+        ok,
+        log_command: Some(cmd.join(" ")),
+    })
 }
 
 fn makefile_has_ci(path: &Path) -> Result<bool, DynError> {
