@@ -31,19 +31,38 @@ ln -s "$PWD/prompts/autonomous-senior-engineer.prompt.md" \
 
 ## Lever CLI
 
-The `lever` binary is the canonical entry point. Run `lever` once to execute the next runnable task (`status != completed`, `model != human`), add `--task-id <id>` to pin a specific task, or pass `--loop` (see below) to keep invoking task-agent runs until a stop reason occurs.
+The `lever` binary is the canonical entry point. Run `lever` once to execute the next runnable task (`status != completed`, `model != human`), add `--task-id <id>` to pin a specific task, use `--next` to force "next runnable" selection, or pass `--loop` (see below) to keep invoking task-agent runs until a stop reason occurs.
 
 ### Defaults and discovery
 
 - `--tasks` defaults to `prd.json`, falling back to `tasks.json` in the current directory if the flagged file is absent.
-- The workspace is inferred from the tasks file’s directory (current directory when `prd.json`/`tasks.json` is in the repo root).
+- `--workspace` defaults to the current directory; when `--tasks` is omitted the tasks file is discovered relative to that workspace.
 - `--prompt` defaults to `$HOME/.prompts/autonomous-senior-engineer.prompt.md`; the CLI validates the file exists before running.
 - `--command-path` defaults to `internal` (the Rust task agent). You can point it at another executable for testing or for delegating work to a different task agent binary.
 - Every iteration forwards the resolved `--tasks`, `--workspace`, and `--prompt` values to the configured task agent so the behavior stays consistent with the legacy workflow.
+- `--assignee` is forwarded to external task agents when `--command-path` is not `internal`.
+- `--reset-task` clears attempt counters for the selected task before running.
+- `--delay` inserts a sleep between loop iterations (seconds, default 0; only valid with `--loop`).
+- `--next` selects the first task whose status is not `completed` and whose model is not `human`; it cannot be combined with `--task-id`.
 
 ### Loop semantics
 
 `--loop` accepts an optional count. Passing `--loop` with no value (or `--loop 0`) keeps cycling until a terminal stop reason occurs (no tasks, human input request, blocked run, etc.). Any positive integer limits the number of task-agent invocations; once the limit is reached, `lever` logs `lever: --loop limit reached (<count>)` and exits even if runnable tasks remain. Without `--loop`, `lever` runs only one iteration, so you can rely on the existing `--task-id` or implicit selection behavior for ad-hoc task-agent runs.
+
+### Exit codes
+
+`lever` mostly forwards the task agent’s exit code. In loop mode it interprets some codes to decide when to stop.
+
+- `0`: Success (single iteration completed) or loop ended normally (no remaining tasks, loop limit reached, or clean shutdown).
+- `1`: Lever stop reason (human input required, blocked by dependencies, or blocked run detected in loop mode).
+- `2`: Invalid task metadata, unsupported model, or invalid task selection input.
+- `3`: Task agent reports no runnable tasks.
+- `4`: Task agent selected a human task.
+- `6`: Task agent reports a dependency ordering issue.
+- `10`: Task agent blocked because no `result.json` was produced.
+- `11`: Task agent blocked (attempt limit reached or run outcome blocked).
+- `12`: Task agent recorded progress (non-completed, non-blocked outcome).
+- `130`: Interrupted (SIGINT/CTRL-C).
 
 ### Examples
 
