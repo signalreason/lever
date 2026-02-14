@@ -73,18 +73,7 @@ lever_bin="$repo_root/target/debug/lever"
     fi
   done
 
-  attempts=0
-  until jq -e '.tasks[0].observability.last_run_id' "$repo_dir/prd.json" >/dev/null 2>&1; do
-    sleep 0.05
-    attempts=$((attempts + 1))
-    if [[ "$attempts" -gt 200 ]]; then
-      kill "$lever_pid" 2>/dev/null || true
-      wait "$lever_pid" 2>/dev/null || true
-      echo "Timed out waiting for task to start" >&2
-      exit 1
-    fi
-  done
-
+  sleep 0.1
   kill -INT "$lever_pid"
 
   if ! wait "$lever_pid"; then

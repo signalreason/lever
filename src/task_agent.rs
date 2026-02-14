@@ -2,7 +2,7 @@ use std::{
     error::Error,
     fs,
     fs::File,
-    io::{self, BufRead, Read, Write, IsTerminal},
+    io::{self, BufRead, IsTerminal, Read, Write},
     path::{Path, PathBuf},
     process::Command,
     sync::{
@@ -116,7 +116,7 @@ pub fn run_task_agent(
         return Ok(11);
     }
 
-    let run_attempt = increment_attempt_count(&config.tasks_path, &selection.task_id)?;
+    let run_attempt = current_attempts + 1;
 
     let run_dir_rel = PathBuf::from(".ralph")
         .join("runs")
@@ -129,16 +129,6 @@ pub fn run_task_agent(
     fs::write(&task_snapshot_path, format!("{}\n", selection.raw_json))?;
 
     ensure_schema_file(&config.workspace)?;
-
-    if selection.status == "unstarted" || selection.status == "blocked" {
-        update_task_status(
-            &config.tasks_path,
-            &selection.task_id,
-            "started",
-            &run_id,
-            &format!("Run {} started (attempt {})", run_id, run_attempt),
-        )?;
-    }
 
     if is_shutdown(shutdown_flag) {
         return handle_interrupt(
@@ -270,9 +260,8 @@ pub fn run_task_agent(
         tokens_used,
     )?;
 
-    if !result_path_abs.is_file()
-        || result_path_abs.metadata().map(|m| m.len()).unwrap_or(0) == 0
-    {
+    if !result_path_abs.is_file() || result_path_abs.metadata().map(|m| m.len()).unwrap_or(0) == 0 {
+        increment_attempt_count(&config.tasks_path, &selection.task_id)?;
         update_task_status(
             &config.tasks_path,
             &selection.task_id,
@@ -302,12 +291,15 @@ pub fn run_task_agent(
     }
 
     let result: Value = serde_json::from_str(&fs::read_to_string(&result_path_abs)?)?;
-    let outcome = result
+    let reported_outcome = result
         .get("outcome")
         .and_then(Value::as_str)
         .unwrap_or("")
         .to_string();
-    let dod_met = result.get("dod_met").and_then(Value::as_bool).unwrap_or(false);
+    let dod_met = result
+        .get("dod_met")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
 
     if let Some(summary) = result.get("summary").and_then(Value::as_str) {
         if !summary.trim().is_empty() {
@@ -317,7 +309,7 @@ pub fn run_task_agent(
                 &[
                     format!("task_id={}", selection.task_id),
                     format!("run_id={}", run_id),
-                    format!("outcome={}", outcome),
+                    format!("outcome={}", reported_outcome),
                     format!("dod_met={}", dod_met),
                     format!(
                         "tests_ran={}",
@@ -347,14 +339,11 @@ pub fn run_task_agent(
         if !notes.trim().is_empty() {
             log_line(
                 "WARN",
-                &format!(
-                    "Definition of done not met: {}",
-                    compact_text(notes, 220)
-                ),
+                &format!("Definition of done not met: {}", compact_text(notes, 220)),
                 &[
                     format!("task_id={}", selection.task_id),
                     format!("run_id={}", run_id),
-                    format!("outcome={}", outcome),
+                    format!("outcome={}", reported_outcome),
                 ],
             );
         } else {
@@ -364,14 +353,18 @@ pub fn run_task_agent(
                 &[
                     format!("task_id={}", selection.task_id),
                     format!("run_id={}", run_id),
-                    format!("outcome={}", outcome),
+                    format!("outcome={}", reported_outcome),
                 ],
             );
         }
     }
 
-    let verify = if outcome == "completed" && dod_met {
-        run_verification(&config.workspace, &run_dir_abs)?
+    let verify = if dod_met {
+        run_verification(
+            &config.workspace,
+            &run_dir_abs,
+            &selection.verification_commands,
+        )?
     } else {
         VerificationResult::skipped()
     };
@@ -385,10 +378,7 @@ pub fn run_task_agent(
                     format!("task_id={}", selection.task_id),
                     format!("run_id={}", run_id),
                     format!("command={}", verify.log_command.as_deref().unwrap_or("")),
-                    format!(
-                        "log={}",
-                        run_dir_abs.join("verify.log").display()
-                    ),
+                    format!("log={}", run_dir_abs.join("verify.log").display()),
                 ],
             );
         } else {
@@ -399,16 +389,14 @@ pub fn run_task_agent(
                     format!("task_id={}", selection.task_id),
                     format!("run_id={}", run_id),
                     format!("command={}", verify.log_command.as_deref().unwrap_or("")),
-                    format!(
-                        "log={}",
-                        run_dir_abs.join("verify.log").display()
-                    ),
+                    format!("log={}", run_dir_abs.join("verify.log").display()),
                 ],
             );
         }
     }
 
-    if outcome == "completed" && dod_met && verify.ok {
+    if dod_met && verify.ok {
+        increment_attempt_count(&config.tasks_path, &selection.task_id)?;
         update_task_status(
             &config.tasks_path,
             &selection.task_id,
@@ -437,41 +425,26 @@ pub fn run_task_agent(
         return Ok(0);
     }
 
-    if outcome == "blocked" {
-        update_task_status(
-            &config.tasks_path,
-            &selection.task_id,
-            "blocked",
-            &run_id,
-            &format!("Run {} blocked. See {}", run_id, result_path_rel.display()),
-        )?;
-        git_commit_progress(&config.workspace, &selection.title, &selection.task_id)?;
+    if reported_outcome == "blocked" {
         log_line(
             "WARN",
-            "Run blocked",
+            "Run reported blocked; keeping task started for deterministic retry",
             &[
                 format!("task_id={}", selection.task_id),
                 format!("run_id={}", run_id),
             ],
         );
-        print_line(
-            false,
-            &format!(
-                "BLOCKED {} (model={}, run={})",
-                selection.task_id, selection.model, run_id
-            ),
-        );
-        return Ok(11);
     }
 
     let note = format!(
-        "Run {} progress. outcome={} dod_met={} verify_ok={}. See {}",
+        "Run {} progress. reported_outcome={} dod_met={} verify_ok={}. See {}",
         run_id,
-        outcome,
+        reported_outcome,
         dod_met,
         verify.ok,
         result_path_rel.display()
     );
+    increment_attempt_count(&config.tasks_path, &selection.task_id)?;
     update_task_status(
         &config.tasks_path,
         &selection.task_id,
@@ -486,7 +459,7 @@ pub fn run_task_agent(
         &[
             format!("task_id={}", selection.task_id),
             format!("run_id={}", run_id),
-            format!("outcome={}", outcome),
+            format!("outcome={}", reported_outcome),
             format!("dod_met={}", dod_met),
             format!("verify_ok={}", verify.ok),
         ],
@@ -518,6 +491,7 @@ struct SelectedTask {
     title: String,
     definition_of_done: Vec<String>,
     recommended_approach: String,
+    verification_commands: Vec<String>,
     raw: Value,
     raw_json: String,
 }
@@ -555,7 +529,10 @@ fn select_task(
         }
     };
 
-    let model = first_task.get("model").and_then(Value::as_str).unwrap_or("");
+    let model = first_task
+        .get("model")
+        .and_then(Value::as_str)
+        .unwrap_or("");
     if model == "human" {
         eprintln!("Task requires human: {}", first_task_id);
         return Err(4);
@@ -606,6 +583,22 @@ fn select_task(
         .unwrap_or("")
         .to_string();
 
+    let verification_commands = first_task
+        .get("verification")
+        .and_then(Value::as_object)
+        .and_then(|map| map.get("commands"))
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::trim)
+                .filter(|entry| !entry.is_empty())
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
     let raw = first_task.clone();
     let raw_json = serde_json::to_string(&raw).map_err(|_| 2)?;
 
@@ -616,13 +609,17 @@ fn select_task(
         title,
         definition_of_done,
         recommended_approach,
+        verification_commands,
         raw,
         raw_json,
     })
 }
 
 fn model_supported(model: &str) -> bool {
-    matches!(model, "gpt-5.1-codex-mini" | "gpt-5.1-codex" | "gpt-5.2-codex")
+    matches!(
+        model,
+        "gpt-5.1-codex-mini" | "gpt-5.1-codex" | "gpt-5.2-codex"
+    )
 }
 
 fn run_id() -> Result<String, DynError> {
@@ -885,6 +882,7 @@ fn handle_interrupt(
     run_id: &str,
     run_attempt: u64,
 ) -> Result<i32, DynError> {
+    increment_attempt_count(tasks_path, task_id)?;
     let note = format!("Run {} interrupted on attempt {}", run_id, run_attempt);
     update_task_status(tasks_path, task_id, "started", run_id, &note)?;
     git_commit_progress(workspace, task_title, task_id)?;
@@ -983,14 +981,9 @@ fn compact_text(input: &str, limit: usize) -> String {
 }
 
 fn log_line(level: &str, message: &str, kv: &[String]) {
-    let ts = utc_timestamp("%Y-%m-%dT%H:%M:%SZ")
-        .unwrap_or_else(|_| "1970-01-01T00:00:00Z".to_string());
-    let mut line = format!(
-        "{} {} task-agent {}",
-        ts,
-        level,
-        message.replace('\n', " ")
-    );
+    let ts =
+        utc_timestamp("%Y-%m-%dT%H:%M:%SZ").unwrap_or_else(|_| "1970-01-01T00:00:00Z".to_string());
+    let mut line = format!("{} {} task-agent {}", ts, level, message.replace('\n', " "));
     if !kv.is_empty() {
         line.push(' ');
         line.push_str(&kv.join(" "));
@@ -1124,13 +1117,8 @@ fn base_branch() -> String {
 }
 
 fn load_tasks_root(path: &Path) -> Result<Value, DynError> {
-    let raw = fs::read_to_string(path).map_err(|err| {
-        format!(
-            "Failed to read tasks file {}: {}",
-            path.display(),
-            err
-        )
-    })?;
+    let raw = fs::read_to_string(path)
+        .map_err(|err| format!("Failed to read tasks file {}: {}", path.display(), err))?;
     serde_json::from_str(&raw).map_err(|err| err.into())
 }
 
@@ -1175,10 +1163,7 @@ fn increment_attempt_count(tasks_path: &Path, task_id: &str) -> Result<u64, DynE
 
     let task_obj = task_object_mut(task)?;
     let obs = ensure_observability(task_obj);
-    let current = obs
-        .get("run_attempts")
-        .and_then(Value::as_u64)
-        .unwrap_or(0);
+    let current = obs.get("run_attempts").and_then(Value::as_u64).unwrap_or(0);
     let updated = current + 1;
     obs.insert("run_attempts".to_string(), Value::from(updated));
     write_tasks_root(tasks_path, &root)?;
@@ -1281,10 +1266,32 @@ impl VerificationResult {
     }
 }
 
-fn run_verification(workspace: &Path, run_dir: &Path) -> Result<VerificationResult, DynError> {
+fn run_verification(
+    workspace: &Path,
+    run_dir: &Path,
+    task_verification_commands: &[String],
+) -> Result<VerificationResult, DynError> {
     let verify_log = run_dir.join("verify.log");
     let log_file = File::create(&verify_log)?;
     let mut selected_cmd = None;
+
+    if !task_verification_commands.is_empty() {
+        let script = format!(
+            "set -euo pipefail\n{}\n",
+            task_verification_commands.join("\n")
+        );
+        let status = Command::new("bash")
+            .arg("-lc")
+            .arg(script)
+            .current_dir(workspace)
+            .stdout(log_file.try_clone()?)
+            .stderr(log_file)
+            .status()?;
+        return Ok(VerificationResult {
+            ok: status.success(),
+            log_command: Some("task.verification.commands".to_string()),
+        });
+    }
 
     if is_executable(&workspace.join("scripts/ci.sh")) {
         selected_cmd = Some(vec!["./scripts/ci.sh".to_string()]);

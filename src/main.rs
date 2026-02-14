@@ -13,9 +13,11 @@ use std::{
     time::Duration,
 };
 
+use crate::task_metadata::{
+    validate_task_metadata as validate_task_metadata_raw, TaskMetadataError,
+};
 use clap::{value_parser, Parser};
 use serde_json::Value;
-use crate::task_metadata::{validate_task_metadata as validate_task_metadata_raw, TaskMetadataError};
 
 mod rate_limit;
 mod task_agent;
@@ -607,7 +609,12 @@ fn run_single_iteration(
     config: &ExecutionConfig,
     shutdown_flag: &AtomicBool,
 ) -> Result<(), DynError> {
-    let status = run_once(config, None, config.explicit_task_id.is_none(), shutdown_flag)?;
+    let status = run_once(
+        config,
+        None,
+        config.explicit_task_id.is_none(),
+        shutdown_flag,
+    )?;
     if shutdown_flag.load(Ordering::SeqCst) && matches!(status.code(), Some(130)) {
         println!("lever: shutdown requested during task-agent execution");
         return Ok(());
@@ -696,7 +703,12 @@ fn run_loop_iterations(
                 let task_id = selected_task
                     .as_ref()
                     .map(|task| task.task_id.clone())
-                    .unwrap_or_else(|| config.explicit_task_id.clone().unwrap_or_else(|| "unknown".to_string()));
+                    .unwrap_or_else(|| {
+                        config
+                            .explicit_task_id
+                            .clone()
+                            .unwrap_or_else(|| "unknown".to_string())
+                    });
                 return Err(Box::new(StopReasonError {
                     reason: StopReason::Human {
                         task_id,
@@ -708,7 +720,12 @@ fn run_loop_iterations(
                 let task_id = selected_task
                     .as_ref()
                     .map(|task| task.task_id.clone())
-                    .unwrap_or_else(|| config.explicit_task_id.clone().unwrap_or_else(|| "unknown".to_string()));
+                    .unwrap_or_else(|| {
+                        config
+                            .explicit_task_id
+                            .clone()
+                            .unwrap_or_else(|| "unknown".to_string())
+                    });
                 return Err(Box::new(StopReasonError {
                     reason: StopReason::Dependencies { task_id },
                 }));
@@ -717,7 +734,12 @@ fn run_loop_iterations(
                 let task_id = selected_task
                     .as_ref()
                     .map(|task| task.task_id.clone())
-                    .unwrap_or_else(|| config.explicit_task_id.clone().unwrap_or_else(|| "unknown".to_string()));
+                    .unwrap_or_else(|| {
+                        config
+                            .explicit_task_id
+                            .clone()
+                            .unwrap_or_else(|| "unknown".to_string())
+                    });
                 return Err(Box::new(StopReasonError {
                     reason: StopReason::Blocked { task_id },
                 }));
@@ -818,8 +840,12 @@ fn run_once(
             reset_task: config.reset_task,
             explicit_task_id: config.explicit_task_id.clone(),
         };
-        let exit_code =
-            task_agent::run_task_agent(&agent_config, task_id_override, allow_next, Some(shutdown_flag))?;
+        let exit_code = task_agent::run_task_agent(
+            &agent_config,
+            task_id_override,
+            allow_next,
+            Some(shutdown_flag),
+        )?;
         Ok(exit_status_from_code(exit_code))
     } else {
         let mut command = Command::new(&config.command_path);
@@ -952,11 +978,7 @@ fn resolve_task_id_for_git(
         if let Some(task) = select_next_runnable(&tasks) {
             return Ok(Some(task.task_id.clone()));
         }
-        return Err(format!(
-            "No runnable task found in {}",
-            config.tasks_path.display()
-        )
-        .into());
+        return Err(format!("No runnable task found in {}", config.tasks_path.display()).into());
     }
     Ok(None)
 }
@@ -990,9 +1012,7 @@ impl GitWorkspaceGuard {
             if let Some(stash) = &stash_ref {
                 eprintln!("Stashed local changes as {}.", stash);
             } else {
-                eprintln!(
-                    "Warning: auto-stash created but ref not found; check git stash list."
-                );
+                eprintln!("Warning: auto-stash created but ref not found; check git stash list.");
             }
         }
 
@@ -1028,18 +1048,19 @@ impl GitWorkspaceGuard {
             }
         };
 
-        let run_files_output =
-            match git_output(&self.workspace, &["diff", "--name-only", &self.pre_run_head, "HEAD"])
-            {
-                Ok(output) => output,
-                Err(_) => {
-                    eprintln!(
-                        "Warning: unable to compute run changes; leaving {} for manual apply.",
-                        stash_ref
-                    );
-                    return Ok(());
-                }
-            };
+        let run_files_output = match git_output(
+            &self.workspace,
+            &["diff", "--name-only", &self.pre_run_head, "HEAD"],
+        ) {
+            Ok(output) => output,
+            Err(_) => {
+                eprintln!(
+                    "Warning: unable to compute run changes; leaving {} for manual apply.",
+                    stash_ref
+                );
+                return Ok(());
+            }
+        };
 
         let run_files: HashSet<String> = run_files_output
             .lines()
@@ -1057,12 +1078,7 @@ impl GitWorkspaceGuard {
         }
 
         if self.orig_branch == "HEAD" {
-            if git_status(
-                &self.workspace,
-                &["checkout", "--detach", &self.orig_head],
-            )
-            .is_err()
-            {
+            if git_status(&self.workspace, &["checkout", "--detach", &self.orig_head]).is_err() {
                 eprintln!(
                     "Warning: unable to restore detached HEAD; leaving {}.",
                     stash_ref
@@ -1131,12 +1147,7 @@ fn git_output(workspace: &Path, args: &[&str]) -> Result<String, DynError> {
         .map_err(|err| format!("Failed to run git {}: {}", args.join(" "), err))?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!(
-            "git {} failed: {}",
-            args.join(" "),
-            stderr.trim()
-        )
-        .into());
+        return Err(format!("git {} failed: {}", args.join(" "), stderr.trim()).into());
     }
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
@@ -1189,7 +1200,11 @@ fn base_branch() -> String {
     std::env::var("BASE_BRANCH").unwrap_or_else(|_| "main".to_string())
 }
 
-fn checkout_task_branch(workspace: &Path, base_branch: &str, task_id: &str) -> Result<(), DynError> {
+fn checkout_task_branch(
+    workspace: &Path,
+    base_branch: &str,
+    task_id: &str,
+) -> Result<(), DynError> {
     let task_branch = format!("ralph/{}", task_id);
     git_status(workspace, &["checkout", base_branch])?;
     let exists = Command::new("git")
@@ -1239,9 +1254,8 @@ mod tests {
     #[test]
     fn determine_selected_task_uses_explicit_task_id() {
         let tasks = vec![task("ALPHA", None, None), task("BETA", None, None)];
-        let selected =
-            determine_selected_task(&tasks, Some("BETA"), false, Path::new("prd.json"))
-                .expect("selection failed");
+        let selected = determine_selected_task(&tasks, Some("BETA"), false, Path::new("prd.json"))
+            .expect("selection failed");
         let selected = selected.expect("expected task selection");
         assert_eq!(selected.task_id, "BETA");
     }
@@ -1253,9 +1267,8 @@ mod tests {
             task("HUMAN", None, Some("human")),
             task("NEXT", None, None),
         ];
-        let selected =
-            determine_selected_task(&tasks, None, true, Path::new("prd.json"))
-                .expect("selection failed");
+        let selected = determine_selected_task(&tasks, None, true, Path::new("prd.json"))
+            .expect("selection failed");
         let selected = selected.expect("expected task selection");
         assert_eq!(selected.task_id, "NEXT");
     }
@@ -1263,9 +1276,8 @@ mod tests {
     #[test]
     fn determine_selected_task_default_is_none() {
         let tasks = vec![task("ALPHA", None, None)];
-        let selected =
-            determine_selected_task(&tasks, None, false, Path::new("prd.json"))
-                .expect("selection failed");
+        let selected = determine_selected_task(&tasks, None, false, Path::new("prd.json"))
+            .expect("selection failed");
         assert!(selected.is_none());
     }
 

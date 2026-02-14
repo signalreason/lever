@@ -49,6 +49,17 @@
           "properties": {
             "approach": { "type": "string", "minLength": 1 }
           }
+        },
+        "verification": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "commands": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "type": "string", "minLength": 1 }
+            }
+          }
         }
       },
       "additionalProperties": false

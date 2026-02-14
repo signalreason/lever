@@ -3,11 +3,11 @@
 This document translates the README's task schema guidance and `prd.schema.json` into a precise checklist of fields, types, and constraints so every task entry stays valid.
 
 ## Root structure
-- `tasks` (required): the only top-level property. It is an array whose items must match `#/definitions/task`.
+- `tasks` (required): the only top-level property. It is an array whose items must match `#/$defs/task`.
 - `additionalProperties: false` on the root object, so the file may not introduce any other top-level keys.
 
 ## Task object field requirements
-Every task object must include the fields below. Task entries may include extra metadata (because `additionalProperties: true` is allowed at the task level), but omitting a required field causes validation to fail.
+Every task object must include the fields below. Task entries reject unknown properties (`additionalProperties: false`), so omit keys not declared by the schema.
 
 - `task_id`: non-empty `string` (min length 1).
 - `title`: non-empty `string`.
@@ -15,6 +15,7 @@ Every task object must include the fields below. Task entries may include extra 
 - `model`: `string` limited to `"gpt-5.1-codex-mini"`, `"gpt-5.1-codex"`, `"gpt-5.2-codex"`, or `"human"`.
 - `definition_of_done`: array with `minItems: 1`; each entry must be a non-empty `string` (`minLength: 1`).
 - `recommended`: object whose only allowed property is `approach`. That property is a non-empty `string`, and the object rejects any additional keys.
+- `verification` (optional): object with optional `commands` array. When present, `commands` must contain one or more non-empty command strings.
 
 The `assignee` property has been removed, so tasks should no longer include it.
 

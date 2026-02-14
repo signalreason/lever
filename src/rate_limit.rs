@@ -235,7 +235,10 @@ fn value_to_f64(value: Option<&Value>) -> f64 {
 
 fn value_to_i64(value: Option<&Value>) -> i64 {
     match value {
-        Some(Value::Number(num)) => num.as_i64().or_else(|| num.as_u64().map(|v| v as i64)).unwrap_or(0),
+        Some(Value::Number(num)) => num
+            .as_i64()
+            .or_else(|| num.as_u64().map(|v| v as i64))
+            .unwrap_or(0),
         Some(Value::String(text)) => text.parse::<i64>().unwrap_or(0),
         _ => 0,
     }
@@ -281,15 +284,8 @@ mod tests {
         fs::create_dir_all(rate_file.parent().unwrap()).unwrap();
         fs::write(&rate_file, serde_json::to_string(&payload).unwrap()).unwrap();
 
-        let sleep_seconds = rate_limit_sleep_seconds_at(
-            &rate_file,
-            "gpt-5.2-codex",
-            window,
-            0,
-            2,
-            0,
-            now,
-        );
+        let sleep_seconds =
+            rate_limit_sleep_seconds_at(&rate_file, "gpt-5.2-codex", window, 0, 2, 0, now);
 
         assert_eq!(sleep_seconds, 40);
     }
@@ -310,15 +306,8 @@ mod tests {
         fs::create_dir_all(rate_file.parent().unwrap()).unwrap();
         fs::write(&rate_file, serde_json::to_string(&payload).unwrap()).unwrap();
 
-        let sleep_seconds = rate_limit_sleep_seconds_at(
-            &rate_file,
-            "gpt-5.2-codex",
-            window,
-            100,
-            0,
-            40,
-            now,
-        );
+        let sleep_seconds =
+            rate_limit_sleep_seconds_at(&rate_file, "gpt-5.2-codex", window, 100, 0, 40, now);
 
         assert_eq!(sleep_seconds, 10);
     }

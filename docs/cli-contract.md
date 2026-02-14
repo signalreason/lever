@@ -77,7 +77,7 @@ Before running Codex, the task agent must ensure:
 - “Runnable” means `status != completed` and `model != human`. The loop and the task agent pick the first runnable task in file order.
 - `--task-id` can target a later task only if every earlier task has `status == completed`; otherwise the agent exits with code `6` and explains which task is blocking progress.
 - When the first runnable task has `model == "human"`, the agent exits `4` (hooked by the loop to stop). The loop surfaces “human input required” as the stop reason.
-- Any exit code ≥`10` signals a blocked/failed state (`10` for no output, `11` for hitting `MAX_RUN_ATTEMPTS` = 3, `12` for partial progress). The loop stops on `10`/`11` with an explanatory reason and treats `12` as a benign status (it keeps looping if cycles remain).
+- Any exit code ≥`10` signals task-agent state (`10` for no output, `11` for hitting `MAX_RUN_ATTEMPTS` = 3, `12` for partial progress). The loop stops on `10`/`11` with an explanatory reason and treats `12` as a benign status (it keeps looping if cycles remain).
 
 ## Task agent run behavior
 
@@ -85,8 +85,8 @@ Before running Codex, the task agent must ensure:
 - Maintain a rate-limit cache under `.ralph/rate_limit.json` using the default TPM/RPM caps per model.
 - Run `codex exec --yolo --model <model> --output-schema .ralph/task_result.schema.json --output-last-message <result> --json --skip-git-repo-check`, streaming logs to `<run>/codex.jsonl` and collecting tokens for rate tracking.
 - Interpret the `result.json` schema (`outcome`, `dod_met`, `tests`, `notes`, `blockers`). If the file is missing, exit `10` and mark the task `blocked`.
-- After Codex finishes successfully, optionally run verification (in order): `./scripts/ci.sh`, `make ci`, `./tests/run.sh`, `pytest -q` (only if Python tests exist). Only run the first script that exists/executable. Log success/failure and include the command + log path with `log_line` for visibility.
-- Update the task status: on a successful `completed` outcome with `dod_met == true` and verification passing, set `status = completed`. On `blocked` outcomes or attempt limits (≥`MAX_RUN_ATTEMPTS` = 3) set `status = blocked`. Otherwise, keep it `started`. Always stamp `observability` with `last_run_id`, `last_update_utc`, and, when appropriate, `last_note`.
+- After Codex finishes, run deterministic verification when `dod_met == true`. If `task.verification.commands` is configured, execute those commands in order via `bash -lc`; otherwise fall back to auto-detection in order: `./scripts/ci.sh`, `make ci`, `./tests/run.sh`, `pytest -q` (only if Python tests exist). Log success/failure and include command + log path with `log_line`.
+- Update task status only after Codex returns: set `status = completed` when `dod_met == true` and verification passes, set `status = blocked` only for runner-detected hard blocks (attempt limit or missing `result.json`), otherwise keep `status = started`. Always stamp `observability` with `last_run_id`, `last_update_utc`, and (when available) `last_note`.
 - Create a feature branch `ralph/<task_id>`, commit the run’s changes, and merge them back into `main` with a fast-forward if the run completes. Teardown ensures the workspace returns to the original branch and any auto-stashed changes are restored.
 
 Use this contract to drive both implementation and regression tests.

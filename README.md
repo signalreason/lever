@@ -54,8 +54,8 @@ The `lever` binary is the canonical entry point. Run `lever` once to execute the
 - `4`: Task agent selected a human task.
 - `6`: Task agent reports a dependency ordering issue.
 - `10`: Task agent blocked because no `result.json` was produced.
-- `11`: Task agent blocked (attempt limit reached or run outcome blocked).
-- `12`: Task agent recorded progress (non-completed, non-blocked outcome).
+- `11`: Task agent blocked (attempt limit reached before run).
+- `12`: Task agent recorded progress (run completed without deterministic success).
 - `130`: Interrupted (SIGINT/CTRL-C).
 
 ### Examples
@@ -102,6 +102,7 @@ Tasks must conform to `prd.schema.json`. The schema requires the following metad
 - `model`: one of `"gpt-5.1-codex-mini"`, `"gpt-5.1-codex"`, `"gpt-5.2-codex"`, or `"human"`.
 - `definition_of_done`: non-empty array of non-empty strings describing completion criteria.
 - `recommended`: object requiring an `approach` string (no other keys allowed).
+- `verification` (optional): object with optional `commands` array of non-empty shell command strings. When present, these commands run (in order) as the deterministic verification step.
 
 The optional `observability` object must appear only when there is recent run metadata, and it must include `run_attempts` (integer ≥ 0), `last_note` (string), `last_update_utc` (RFC 3339 / ISO 8601 string), and `last_run_id` (non-empty string).
 
