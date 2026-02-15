@@ -1,41 +1,67 @@
 # Repo Map
 
-- Languages/frameworks/runtime: Rust CLI (`src/main.rs`, `src/task_agent.rs`) with a bash test harness (`tests/run.sh`).
-- Entrypoint: `lever` binary (`src/main.rs`) orchestrates loop mode, task selection, and delegation to the internal task agent.
-- Configuration surface: CLI flags and environment variables (see `README.md`); prompt templates live under `prompts/`.
-- Data stores/external services: canonical task data in `prd.json` (or `tasks.json`) plus schema `prd.schema.json`; runtime artifacts land in `.ralph/` (run snapshots under `.ralph/runs/...` and `.ralph/rate_limit.json`). External deps include the Codex CLI, git, and optional verification hooks (`scripts/ci.sh`, `Makefile`, `tests/run.sh`, `pytest`).
+- Stack: Rust CLI (`lever`) with Bash integration tests.
+- Runtime model: `src/main.rs` provides CLI orchestration; `src/task_agent.rs` is the internal task runner.
+- Source of truth: task data in `prd.json` (or `tasks.json` fallback), validated by `prd.schema.json`.
+- Run artifacts: generated under `.ralph/` (not source-controlled as canonical config).
 
-## Primary flow
+## Top-Level Layout
 
-1. `lever` loads the tasks file and selects a task (`src/main.rs`).
-2. Loop mode (`--loop`) repeats runs, respecting exit codes and delay (`src/main.rs`).
-3. The internal task agent validates task metadata, records run state, and builds the prompt (`src/task_agent.rs`).
-4. Codex is invoked via `codex exec`; results are streamed to `.ralph/runs/<task_id>/<run_id>/codex.jsonl` (`src/task_agent.rs`).
-5. The task agent updates `prd.json` status/observability, runs verification hooks, and manages git branches for successful runs (`src/task_agent.rs`).
+- `src/`
+  - `main.rs`: CLI args, task discovery/selection, `--loop` behavior, internal vs external command path, git workspace guard.
+  - `task_agent.rs`: task execution lifecycle (selection, prompt build, Codex run, result parsing, status updates, verification, commits).
+  - `rate_limit.rs`: request/token window accounting stored in `.ralph/rate_limit.json`.
+  - `task_metadata.rs`: required metadata validation (`title`, `definition_of_done`, `recommended.approach`).
+- `tests/`
+  - `run.sh`: executes all `tests/test-*.sh`.
+  - `helpers.sh`: shared shell helpers.
+  - `test-lever-*.sh`, `test-task-agent-*.sh`, `test-verification*.sh`: coverage for selection, looping, reset/attempt limits, metadata, interruption, verification, and command-path behavior.
+- `prompts/`
+  - `autonomous-senior-engineer.prompt.md`: base prompt template used unless `--prompt` overrides.
+- `docs/`
+  - `cli-contract.md`: CLI semantics and expected behavior.
+  - `task-schema-details.md`: task JSON schema details and constraints.
+- `.github/workflows/tests.yml`
+  - CI workflow that installs deps and runs `./tests/run.sh`.
+- `README.md`
+  - Operator-facing usage and CLI contract summary.
+- `AGENTS.md`
+  - Repo-specific contribution instructions used by coding agents.
+- `prd.json` / `prd.md` / `prd.schema.json`
+  - Task backlog, product doc, and task schema.
 
-## Important files
+## Primary Execution Flow
 
-- `src/main.rs` — CLI parsing, path resolution, loop behavior, and delegation to the internal task agent.
-- `src/task_agent.rs` — task selection, prompt assembly, Codex invocation, verification, git lifecycle, and task status updates.
-- `src/rate_limit.rs` — prompt token estimation and `.ralph/rate_limit.json` handling.
-- `prompts/autonomous-senior-engineer.prompt.md` — base prompt template.
-- `tests/run.sh` — runs every `tests/test-*.sh` script.
-- `tests/test-lever-task-agent.sh` — integration test for `lever` running the internal task agent.
-- `tests/test-task-agent.sh` — smoke test for task completion and status update via `lever`.
-- `tests/test-lever-loop-command-path.sh` — validates loop argument propagation to a stubbed command path.
-- `tests/test-verification.sh` — verifies hook selection behavior via `lever`.
+1. `lever` resolves workspace/tasks/prompt/command paths and validates CLI arg combinations (`src/main.rs`).
+2. It picks a task via explicit `--task-id` or next-runnable logic, with additional loop stop-reason handling (`src/main.rs`).
+3. The internal task agent validates task metadata/model, initializes run directories, and writes task/prompt snapshots (`src/task_agent.rs`).
+4. Codex runs with JSON schema output; logs and result files are written under `.ralph/runs/<task_id>/<run_id>/` (`src/task_agent.rs`).
+5. The task agent updates task status + observability fields in the tasks file, runs verification, and commits progress (`src/task_agent.rs`).
+6. `lever` decides whether to continue looping, stop, or propagate an exit condition (`src/main.rs`).
 
-## Key behaviors to audit
+## Verification Resolution Order
 
-- Task selection rules and `--task-id` gating (`src/main.rs`).
-- Loop stop reasons and exit code handling (`src/main.rs`).
-- Run artifact layout under `.ralph/` (`src/task_agent.rs`).
-- Rate-limit behavior and token estimation (`src/rate_limit.rs`).
-- Verification hook ordering and logging (`src/task_agent.rs`).
+`src/task_agent.rs` chooses verification in this order:
 
-## Quick checks
+1. Task-level `verification.commands` in task JSON.
+2. `./scripts/ci.sh` if executable.
+3. `make ci` if a `Makefile` has a `ci:` target.
+4. `./tests/run.sh` if executable.
+5. `pytest -q` if pytest is available and Python tests are detected.
 
-- `rg -n "resolve_loop_mode|run_loop_iterations" src/main.rs`
-- `rg -n "run_task_agent|build_prompt|run_codex" src/task_agent.rs`
-- `rg -n "rate_limit" src/rate_limit.rs`
-- `rg -n "verification" src/task_agent.rs`
+## Operational Files Under `.ralph/`
+
+- `.ralph/runs/<task_id>/<run_id>/task.json`: task snapshot at execution start.
+- `.ralph/runs/<task_id>/<run_id>/prompt.md`: assembled prompt sent to Codex.
+- `.ralph/runs/<task_id>/<run_id>/codex.jsonl`: Codex JSON event stream.
+- `.ralph/runs/<task_id>/<run_id>/result.json`: structured result payload.
+- `.ralph/runs/<task_id>/<run_id>/verify.log`: verification output.
+- `.ralph/rate_limit.json`: rolling token/request history.
+- `.ralph/task_result.schema.json`: schema enforced for Codex result output.
+
+## Quick Audit Commands
+
+- `rg -n "resolve_paths|determine_selected_task|run_loop_iterations" src/main.rs`
+- `rg -n "run_task_agent|select_task|build_prompt|run_codex|run_verification" src/task_agent.rs`
+- `rg -n "rate_limit_settings|rate_limit_sleep_seconds|record_rate_usage" src/rate_limit.rs`
+- `rg -n "validate_task_metadata" src/task_metadata.rs src/main.rs src/task_agent.rs`
