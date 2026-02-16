@@ -568,10 +568,16 @@
         "All linters pass, including cargo fmt --check and cargo clippy --all-targets -- -D warnings."
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260216T024547Z-3274 completed",
+        "last_run_id": "20260216T024547Z-3274",
+        "last_update_utc": "2026-02-16T02:49:57Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Add a failing required-mode integration test that asserts no Codex invocation, then implement fail-fast policy handling."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "CTX-021",
       "title": "Add integration test for required-mode compile failure behavior",
       "verification": {

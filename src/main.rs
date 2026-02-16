@@ -893,7 +893,7 @@ fn run_loop_iterations(
                     reason: StopReason::Dependencies { task_id },
                 }));
             }
-            Some(10) | Some(11) => {
+            Some(10) | Some(11) | Some(13) => {
                 let task_id = selected_task
                     .as_ref()
                     .map(|task| task.task_id.clone())
