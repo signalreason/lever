@@ -1,119 +1,85 @@
-# Product Requirements Document: Lever CLI (Rust)
+# Product Requirements Document: Assembly Context in Lever
 
 ## Overview
-Move the complete Ralph loop and task agent behavior into the Rust `lever` binary so it can run from any repo without relying on legacy shell scripts. The CLI should preserve current semantics, flags, and output as closely as possible while removing the shell script dependency.
+Integrate `assembly` context compilation into the `lever` task-agent workflow so each run can attach deterministic repo context (`pack/context.md`) to the Codex prompt. The integration must preserve existing run semantics and artifact layout while adding optional, auditable context packs per run.
 
 ## Goals
-- Deliver a single Rust binary `lever` that covers the behavior of both `task-agent` and `ralph-loop`.
-- Default behavior is a single task-agent iteration.
-- `--loop` runs multiple iterations (or continuous loop) and stops on Ctrl-C.
-- Preserve existing user workflows and flags as closely as possible.
-- Remove reliance on shell scripts so `lever` can be executed from any repo/location.
+- Compile context for each task-agent run using `assembly build`.
+- Store pack artifacts under the run directory (`.ralph/runs/<task_id>/<run_id>/pack/`).
+- Inject compiled context into the final prompt sent to Codex.
+- Keep integration deterministic and traceable via `manifest.json`.
+- Ship changes in dependency-first order and grouped by repo.
 
 ## Non-Goals
-- Rewriting Codex CLI behavior or internal prompts.
-- Changing task JSON formats or artifact layout under `.ralph/`.
-- Modifying output formats beyond what is needed for Rust CLI.
-- Adding new orchestration features unrelated to loop behavior.
+- Replacing Lever task selection, verification, or git guard behavior.
+- Replacing Assembly scoring heuristics beyond what is needed for safe Lever integration.
+- Introducing cross-repo tasks that require simultaneous edits in both repos.
 
-## Users & Use Cases
-- **Primary user**: developers running task automation locally via `task-agent` or `ralph-loop`.
-- **Use cases**:
-  - Run a single task iteration for a specific task ID.
-  - Run repeated iterations for a task file until a count is reached or the user stops it.
-  - Use a single binary in CI or local scripts.
+## Current State
+- `lever` currently builds prompt text from base prompt + task metadata in `src/task_agent.rs` (`build_prompt`), then runs Codex.
+- `assembly` already compiles deterministic `pack/` outputs (`manifest.json`, `index.json`, `context.md`, `policy.md`, `lint.json`) via `assembly build`.
+- No first-class handoff exists between these systems today.
 
-## CLI Requirements
-### Command Name
-- `lever`
+## Target Workflow
+1. Lever selects a task and creates run artifacts as it does today.
+2. Lever calls Assembly to compile a pack into the current run directory.
+3. Lever appends `pack/context.md` (and optionally lint summary) into the generated prompt.
+4. Lever logs context compile status and pack paths in run logs.
+5. Codex executes with the augmented prompt; verification and task status behavior remain unchanged.
 
-### Core Behavior
-- Default: one iteration, equivalent to `task-agent`.
-- Loop mode: `--loop N` runs exactly `N` iterations; stop early on Ctrl-C.
-- `--loop` with no value runs until Ctrl-C.
+## Repo Scope and Dependency
+- Assembly-side prerequisites are tracked in `/Users/xwoj/src/assembly/prd.md`.
+- Lever work in this document starts only after the Assembly PRD is completed and released.
 
-### Arguments & Flags
-- `--tasks <PATH>` (optional): path to tasks JSON file. If not provided, look for `prd.json` or `tasks.json` in the current directory, in that order, and use the first one found. If neither exists, exit with an error.
-- `--task-id <ID>` (optional): if provided, run that task from the tasks file.
-- `--next` (optional): run the next task with `status != completed` and `model != human`.
-- `--prompt <PATH>`: prompt template file.
-- `--workspace <PATH>`: repo directory to run in (default: current directory).
-- `--assignee <NAME>`: log tag only (not persisted to tasks).
-- `--reset-task`: reset attempt counters/status for the selected task before running.
-- `--delay <SECONDS>`: pause between loop iterations (from ralph-loop).
-- `--loop [N]`: run loop mode continuously if `N` is omitted; run exactly `N` iterations if provided (e.g., `--loop 3`).
+## Lever Plan (After Assembly Prerequisites)
+1. Add context compile configuration in CLI and runtime config.
+   - Add flags for enabling/disabling context compile, selecting required vs best-effort behavior, and setting context token budget.
+   - Add optional Assembly executable path override for local/custom installations.
+2. Add Assembly invocation in `task_agent` run lifecycle.
+   - After run directory creation and task snapshot write, invoke Assembly with:
+     - `--repo <workspace>`
+     - `--task @<run_dir>/task.json` (or a dedicated task-brief file)
+     - `--task-id <task_id>`
+     - `--out <run_dir>/pack`
+     - configured token budget + additive excludes
+   - Capture stdout/stderr into run artifacts for debugging.
+3. Extend prompt building to consume compiled context.
+   - Update prompt assembly in `src/task_agent.rs` to append compiled context blocks from `pack/context.md`.
+   - Include concise provenance in prompt (`manifest` path and commit SHA).
+4. Define failure policy and exit semantics.
+   - Best-effort mode: log warning and continue without compiled context.
+   - Required mode: fail run before Codex execution if context compile fails or expected pack files are missing.
+5. Add tests and fixtures.
+   - Unit tests for command construction and prompt augmentation.
+   - Bash integration tests with a stub Assembly command for: success, best-effort failure, required-mode failure, and pack path correctness.
+6. Update Lever docs.
+   - Update `README.md` and `REPO_MAP.md` with context compile lifecycle and new flags.
 
-### Exit Codes
-- `0` on successful completion of the requested iterations.
-- Non-zero if any iteration fails; error should be surfaced with a concise message.
+## Delivery Order
+1. Complete `/Users/xwoj/src/assembly/prd.md` (Assembly prerequisites).
+2. Pin Lever integration to the updated Assembly interface.
+3. Ship Lever with context compile defaulting to best-effort.
+4. After soak period and test confidence, consider flipping default to required mode.
 
-## Functional Requirements
-1. **Tasks file discovery**: if `--tasks` is not given, search for `prd.json` then `tasks.json` in the current directory and use the first one found; error if neither exists.
-2. **Task selection**:
-   - If `--task-id` is given, run that task (error if not found).
-   - If `--next` is given, run the first task with `status != completed` and `model != human`.
-   - If neither `--task-id` nor `--next` is given, and `--loop` is not set, default to the first task with `status != completed` and `model != human` (matching existing lever behavior).
-3. **Single iteration**: runs full task-agent logic exactly once (including task validation, logging, git stashing/branching, and rate limiting).
-4. **Loop iteration**: repeats the iteration logic `N` times if provided; otherwise runs until Ctrl-C or a stop reason (no tasks, human task, blocked, dependency).
-5. **Ctrl-C handling**: stop cleanly after current iteration, exit with `0` unless the current iteration failed.
-6. **No shell dependency**: all execution paths are inside the Rust binary; no invocation of legacy shell scripts.
-7. **Logging**: output should remain consistent with existing scripts where possible.
-8. **Exit code parity**: preserve exit codes used by the existing shell scripts for stop reasons and errors.
+## Acceptance Criteria
+- Every context-enabled Lever run writes a complete pack under `.ralph/runs/<task_id>/<run_id>/pack/`.
+- Prompt includes deterministic compiled context from `pack/context.md`.
+- Lever behavior without context compile remains backward compatible.
+- Required mode fails early and clearly when context compile fails.
+- Integration tests cover success and both failure policies.
+- Documentation in both repos reflects the final operator workflow.
 
-## Non-Functional Requirements
-- **Reliability**: no silent failures; errors must bubble up.
-- **Portability**: run on macOS and Linux with standard Rust toolchain.
-- **Performance**: overhead of Rust wrapper should be negligible.
-- **Maintainability**: centralized CLI parsing and iteration logic.
-
-## UX & Error Handling
-- Clear error message for missing required flags.
-- Validate `--loop` is either omitted (continuous mode) or a non-negative integer.
-- Print a short summary per iteration (start/end) if it doesn’t break existing output conventions.
-
-## Implementation Plan
-1. **Inventory behavior and exit codes**
-   - Read the legacy shell scripts to enumerate flags, defaults, and exit codes.
-   - Map all stop reasons and their numeric exit codes to a Rust enum.
-2. **Port task-agent logic into Rust**
-   - Implement CLI flags in `src/main.rs` using `clap` for: `--tasks`, `--task-id`, `--next`, `--prompt`, `--workspace`, `--assignee`, `--reset-task`.
-   - Port task validation, task selection, rate-limit bookkeeping, git stashing/branch switching, and prompt construction.
-   - Replace shell execs (`jq`, `git`, `codex`) with Rust implementations or explicit `Command` invocations where appropriate.
-3. **Port loop logic into Rust**
-   - Implement `--loop [N]` and `--delay` in Rust.
-   - Preserve stop-reason handling (human task, blocked task, unmet dependencies).
-4. **Remove shell scripts as execution dependencies**
-   - Delete or deprecate the legacy shell scripts.
-   - Update any references to these scripts in tests and docs.
-5. **Update documentation and tests**
-   - Update `README.md` to remove install instructions for shell scripts and document new flags.
-   - Update `tests/` to call `lever` directly, including loop behavior and exit codes.
-6. **Polish**
-   - Add targeted Rust unit tests for task selection and exit code mapping.
-   - Add integration tests in `tests/` for representative flows.
-
-## Dependencies
-- Rust toolchain (stable)
-- `clap` for CLI parsing
-- `ctrlc` for signal handling
-
-## Risks & Mitigations
-- **Behavior drift**: mitigate by wrapping existing scripts initially.
-- **Ctrl-C handling**: ensure graceful shutdown to avoid corrupting `.ralph/` artifacts.
-- **Flag compatibility**: document any differences clearly in README.
-- **Task selection behavior**: ensure the “next not completed” selection matches existing expectations.
-
-## Testing Requirements
-- Unit tests for CLI parsing, tasks file discovery, and loop count validation.
-- Unit tests for task selection and exit code mapping.
-- Integration tests that run `lever` with known tasks files (reuse existing bash harness).
-- Test Ctrl-C handling manually or via integration harness.
-
-## Documentation Updates
-- Update `README.md` with new `lever` usage and examples.
-- Document loop semantics, exit codes, and Ctrl-C behavior.
-- Remove references to installing shell scripts and note they are removed.
+## Risks and Mitigations
+- Assembly availability mismatch across environments.
+  - Mitigation: explicit Assembly path flag + clear startup validation message.
+- Context bloat from unintended files.
+  - Mitigation: enforce `.ralph/**` exclusion and additive glob controls.
+- Prompt size regression.
+  - Mitigation: configurable context token budget and explicit truncation handling.
+- Integration drift across repos.
+  - Mitigation: versioned CLI contract and dependency-first rollout.
 
 ## Open Questions
-- Should `--loop 0` be treated as a no-op (exit 0) or as "loop forever"? (Existing `lever` treats 0 as infinite.)
-- Should `--next` be required for single-iteration runs without `--task-id`, or should `lever` continue auto-selecting the next task by default?
+- Should Lever default to best-effort context compile forever, or switch to required mode once rollout stabilizes?
+- Should lint findings from `pack/lint.json` be injected into prompt, or only logged for operator visibility?
+- Should the task input to Assembly remain `@task.json`, or move to a generated task-brief markdown file for better relevance?
