@@ -8,7 +8,7 @@ Integrate `assembly` context compilation into the `lever` task-agent workflow so
 - Store pack artifacts under the run directory (`.ralph/runs/<task_id>/<run_id>/pack/`).
 - Inject compiled context into the final prompt sent to Codex.
 - Keep integration deterministic and traceable via `manifest.json`.
-- Ship changes in dependency-first order and grouped by repo.
+- Complete the remaining Lever-only integration work against the finalized Assembly interface.
 
 ## Non-Goals
 - Replacing Lever task selection, verification, or git guard behavior.
@@ -17,7 +17,8 @@ Integrate `assembly` context compilation into the `lever` task-agent workflow so
 
 ## Current State
 - `lever` currently builds prompt text from base prompt + task metadata in `src/task_agent.rs` (`build_prompt`), then runs Codex.
-- `assembly` already compiles deterministic `pack/` outputs (`manifest.json`, `index.json`, `context.md`, `policy.md`, `lint.json`) via `assembly build`.
+- Assembly prerequisite tasks are complete in `assembly` (additive include/exclude flags, runtime-artifact exclusion support, and machine-readable build summary output).
+- `assembly` compiles deterministic `pack/` outputs (`manifest.json`, `index.json`, `context.md`, `policy.md`, `lint.json`) via `assembly build`.
 - No first-class handoff exists between these systems today.
 
 ## Target Workflow
@@ -27,11 +28,7 @@ Integrate `assembly` context compilation into the `lever` task-agent workflow so
 4. Lever logs context compile status and pack paths in run logs.
 5. Codex executes with the augmented prompt; verification and task status behavior remain unchanged.
 
-## Repo Scope and Dependency
-- Assembly-side prerequisites are tracked in `/Users/xwoj/src/assembly/prd.md`.
-- Lever work in this document starts only after the Assembly PRD is completed and released.
-
-## Lever Plan (After Assembly Prerequisites)
+## Lever Plan
 1. Add context compile configuration in CLI and runtime config.
    - Add flags for enabling/disabling context compile, selecting required vs best-effort behavior, and setting context token budget.
    - Add optional Assembly executable path override for local/custom installations.
@@ -56,10 +53,9 @@ Integrate `assembly` context compilation into the `lever` task-agent workflow so
    - Update `README.md` and `REPO_MAP.md` with context compile lifecycle and new flags.
 
 ## Delivery Order
-1. Complete `/Users/xwoj/src/assembly/prd.md` (Assembly prerequisites).
-2. Pin Lever integration to the updated Assembly interface.
-3. Ship Lever with context compile defaulting to best-effort.
-4. After soak period and test confidence, consider flipping default to required mode.
+1. Pin Lever integration to the finalized Assembly interface.
+2. Ship Lever with context compile defaulting to best-effort.
+3. After soak period and test confidence, consider flipping default to required mode.
 
 ## Acceptance Criteria
 - Every context-enabled Lever run writes a complete pack under `.ralph/runs/<task_id>/<run_id>/pack/`.
