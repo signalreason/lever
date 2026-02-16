@@ -13,6 +13,7 @@ pub struct RunPaths {
     pub codex_log_abs: PathBuf,
     pub task_snapshot_path: PathBuf,
     pub assembly_task_path: PathBuf,
+    pub assembly_summary_path: PathBuf,
 }
 
 pub fn run_paths(workspace: &Path, task_id: &str, run_id: &str) -> RunPaths {
@@ -30,6 +31,7 @@ pub fn run_paths(workspace: &Path, task_id: &str, run_id: &str) -> RunPaths {
     let codex_log_abs = workspace.join(&codex_log_rel);
     let task_snapshot_path = run_dir_abs.join("task.json");
     let assembly_task_path = run_dir_abs.join("assembly-task.json");
+    let assembly_summary_path = run_dir_abs.join("assembly-summary.json");
 
     RunPaths {
         run_dir_rel,
@@ -43,6 +45,7 @@ pub fn run_paths(workspace: &Path, task_id: &str, run_id: &str) -> RunPaths {
         codex_log_abs,
         task_snapshot_path,
         assembly_task_path,
+        assembly_summary_path,
     }
 }
 
@@ -86,6 +89,10 @@ mod tests {
         assert_eq!(
             paths.assembly_task_path,
             PathBuf::from("workspace/.ralph/runs/TASK-1/run-123/assembly-task.json")
+        );
+        assert_eq!(
+            paths.assembly_summary_path,
+            PathBuf::from("workspace/.ralph/runs/TASK-1/run-123/assembly-summary.json")
         );
     }
 }

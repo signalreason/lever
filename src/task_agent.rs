@@ -1,5 +1,6 @@
 use std::{
     error::Error,
+    ffi::OsString,
     fs,
     fs::File,
     io::{self, BufRead, IsTerminal, Read, Write},
@@ -137,6 +138,16 @@ pub fn run_task_agent(
         &paths.assembly_task_path,
         format!("{}\n", assembly_task_json),
     )?;
+    if config.context_compile.enabled {
+        let _assembly_args = build_assembly_command_args(
+            &config.workspace,
+            &selection.task_id,
+            &paths.assembly_task_path,
+            &paths.pack_dir_abs,
+            &paths.assembly_summary_path,
+            &config.context_compile,
+        );
+    }
 
     ensure_schema_file(&config.workspace)?;
 
@@ -747,6 +758,46 @@ fn build_assembly_task_input(selection: &SelectedTask) -> Value {
     }
 
     payload
+}
+
+fn build_assembly_command_args(
+    workspace: &Path,
+    task_id: &str,
+    task_input: &Path,
+    pack_dir: &Path,
+    summary_json: &Path,
+    config: &ContextCompileConfig,
+) -> Vec<OsString> {
+    let mut args = vec![
+        OsString::from("build"),
+        OsString::from("--repo"),
+        workspace.as_os_str().to_os_string(),
+        OsString::from("--task"),
+    ];
+    let mut task_arg = OsString::from("@");
+    task_arg.push(task_input);
+    args.push(task_arg);
+    args.push("--task-id".into());
+    args.push(task_id.into());
+    args.push("--out".into());
+    args.push(pack_dir.as_os_str().to_os_string());
+    args.push("--token-budget".into());
+    args.push(config.token_budget.to_string().into());
+
+    for glob in &config.exclude_globs {
+        args.push("--exclude".into());
+        args.push(glob.into());
+    }
+
+    for glob in &config.exclude_runtime_globs {
+        args.push("--exclude-runtime".into());
+        args.push(glob.into());
+    }
+
+    args.push("--summary-json".into());
+    args.push(summary_json.as_os_str().to_os_string());
+
+    args
 }
 
 fn rate_limit_sleep(
@@ -1431,4 +1482,65 @@ fn is_executable(path: &Path) -> bool {
         }
     }
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ffi::OsString;
+
+    fn args_to_strings(args: Vec<OsString>) -> Vec<String> {
+        args.into_iter()
+            .map(|arg| arg.to_string_lossy().to_string())
+            .collect()
+    }
+
+    #[test]
+    fn assembly_command_args_include_expected_fields() {
+        let workspace = PathBuf::from("/repo");
+        let task_id = "T1";
+        let run_id = "run-123";
+        let paths = run_paths(&workspace, task_id, run_id);
+        let config = ContextCompileConfig {
+            enabled: true,
+            token_budget: 9001,
+            exclude_globs: vec![".git/**".to_string(), "node_modules/**".to_string()],
+            exclude_runtime_globs: vec![".ralph/**".to_string()],
+            ..Default::default()
+        };
+
+        let args = build_assembly_command_args(
+            &workspace,
+            task_id,
+            &paths.assembly_task_path,
+            &paths.pack_dir_abs,
+            &paths.assembly_summary_path,
+            &config,
+        );
+        let args = args_to_strings(args);
+
+        let expected = vec![
+            "build".to_string(),
+            "--repo".to_string(),
+            "/repo".to_string(),
+            "--task".to_string(),
+            format!("@{}", paths.assembly_task_path.display()),
+            "--task-id".to_string(),
+            "T1".to_string(),
+            "--out".to_string(),
+            paths.pack_dir_abs.display().to_string(),
+            "--token-budget".to_string(),
+            "9001".to_string(),
+            "--exclude".to_string(),
+            ".git/**".to_string(),
+            "--exclude".to_string(),
+            "node_modules/**".to_string(),
+            "--exclude-runtime".to_string(),
+            ".ralph/**".to_string(),
+            "--summary-json".to_string(),
+            paths.assembly_summary_path.display().to_string(),
+        ];
+
+        assert_eq!(args, expected);
+    }
 }
