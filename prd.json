@@ -4,10 +4,10 @@
       "task_id": "CTX-001",
       "status": "unstarted",
       "model": "gpt-5.2-codex",
-      "title": "Pin the Assembly CLI contract used by Lever",
+      "title": "Pin Lever integration to the finalized Assembly interface",
       "definition_of_done": [
         "Write or update automated tests for Assembly contract assumptions before implementation and confirm they fail for the targeted behavior first.",
-        "Lever checks and documents the expected Assembly interface version/contract before context compilation runs.",
+        "Lever validates and documents the finalized Assembly interface contract before context compilation runs.",
         "All tests pass, including ./tests/run.sh.",
         "All linters pass, including cargo fmt --check and cargo clippy --all-targets -- -D warnings."
       ],
