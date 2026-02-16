@@ -400,10 +400,16 @@
         "All linters pass, including cargo fmt --check and cargo clippy --all-targets -- -D warnings."
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260216T021046Z-3274 completed",
+        "last_run_id": "20260216T021046Z-3274",
+        "last_update_utc": "2026-02-16T02:16:46Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Add prompt snapshot-style tests first, then implement a single prompt-append path in task-agent prompt construction."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "CTX-015",
       "title": "Append compiled context from pack/context.md to the Codex prompt",
       "verification": {

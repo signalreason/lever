@@ -148,6 +148,7 @@ pub fn run_task_agent(
     let paths = run_paths(&config.workspace, &selection.task_id, &run_id);
     fs::create_dir_all(&paths.run_dir_abs)?;
     fs::create_dir_all(&paths.pack_dir_abs)?;
+    let mut compiled_context_path: Option<PathBuf> = None;
 
     fs::write(
         &paths.task_snapshot_path,
@@ -249,6 +250,8 @@ pub fn run_task_agent(
                     );
                     warn_context_compile_failure(&selection.task_id, &run_id);
                     eprintln!("Warning: {}", note);
+                } else {
+                    compiled_context_path = Some(paths.pack_dir_abs.join("context.md"));
                 }
             }
             AssemblyOutcome::Interrupted => {
@@ -347,6 +350,7 @@ pub fn run_task_agent(
         &selection.definition_of_done,
         &selection.recommended_approach,
         &paths.task_snapshot_path,
+        compiled_context_path.as_deref(),
     )?;
 
     let codex_stream = CodexLogStream::start(&paths.codex_log_abs, &selection.task_id, &run_id)?;
@@ -900,6 +904,7 @@ fn build_prompt(
     dod: &[String],
     recommended: &str,
     task_snapshot: &Path,
+    compiled_context: Option<&Path>,
 ) -> Result<(), DynError> {
     let mut prompt = fs::read_to_string(base_prompt)?;
     prompt.push_str("\n\n");
@@ -916,7 +921,30 @@ fn build_prompt(
     if !prompt.ends_with('\n') {
         prompt.push('\n');
     }
+    append_compiled_context(&mut prompt, compiled_context)?;
     fs::write(prompt_path, prompt)?;
+    Ok(())
+}
+
+fn append_compiled_context(
+    prompt: &mut String,
+    compiled_context: Option<&Path>,
+) -> Result<(), DynError> {
+    let Some(path) = compiled_context else {
+        return Ok(());
+    };
+    if !path.is_file() {
+        return Ok(());
+    }
+    let context = fs::read_to_string(path)?;
+    if context.trim().is_empty() {
+        return Ok(());
+    }
+    prompt.push_str("\nCompiled context:\n");
+    prompt.push_str(&context);
+    if !prompt.ends_with('\n') {
+        prompt.push('\n');
+    }
     Ok(())
 }
 
