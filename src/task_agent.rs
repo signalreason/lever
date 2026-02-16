@@ -16,6 +16,7 @@ use std::{
 
 use serde_json::{json, Map, Value};
 
+use lever::assembly_contract::REQUIRED_PACK_FILES;
 use lever::context_compile::{ContextCompileConfig, ContextFailurePolicy};
 
 use crate::rate_limit;
@@ -29,6 +30,25 @@ const RATE_LIMIT_FILE: &str = ".ralph/rate_limit.json";
 const RATE_LIMIT_WINDOW_SECONDS: u64 = 60;
 const SCHEMA_PATH: &str = ".ralph/task_result.schema.json";
 const ASSEMBLY_REQUIRED_FAILURE_EXIT_CODE: i32 = 13;
+
+#[derive(Debug)]
+struct PackValidationError {
+    pack_dir: PathBuf,
+    missing: Vec<String>,
+}
+
+impl std::fmt::Display for PackValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Missing required pack files in {}: {}",
+            self.pack_dir.display(),
+            self.missing.join(", ")
+        )
+    }
+}
+
+impl std::error::Error for PackValidationError {}
 
 pub struct TaskAgentConfig {
     pub tasks_path: PathBuf,
@@ -181,6 +201,54 @@ pub fn run_task_agent(
                         format!("stderr={}", paths.assembly_stderr_path.display()),
                     ],
                 );
+
+                if let Err(err) = validate_pack_outputs(&paths.pack_dir_abs) {
+                    let note = format!(
+                        "{}. See stdout={} stderr={}",
+                        err,
+                        paths.assembly_stdout_path.display(),
+                        paths.assembly_stderr_path.display()
+                    );
+                    if config.context_compile.policy == ContextFailurePolicy::Required {
+                        increment_attempt_count(&config.tasks_path, &selection.task_id)?;
+                        update_task_status(
+                            &config.tasks_path,
+                            &selection.task_id,
+                            "blocked",
+                            &run_id,
+                            &note,
+                        )?;
+                        git_commit_progress(
+                            &config.workspace,
+                            &selection.title,
+                            &selection.task_id,
+                        )?;
+                        log_line(
+                            "ERROR",
+                            "Assembly pack validation failed",
+                            &[
+                                format!("task_id={}", selection.task_id),
+                                format!("run_id={}", run_id),
+                                format!("pack_dir={}", paths.pack_dir_abs.display()),
+                                format!("missing={}", err.missing.join(", ")),
+                            ],
+                        );
+                        eprintln!("Blocked: {}", note);
+                        return Ok(ASSEMBLY_REQUIRED_FAILURE_EXIT_CODE);
+                    }
+
+                    log_line(
+                        "WARN",
+                        "Assembly pack validation failed (best-effort)",
+                        &[
+                            format!("task_id={}", selection.task_id),
+                            format!("run_id={}", run_id),
+                            format!("pack_dir={}", paths.pack_dir_abs.display()),
+                            format!("missing={}", err.missing.join(", ")),
+                        ],
+                    );
+                    eprintln!("Warning: {}", note);
+                }
             }
             AssemblyOutcome::Interrupted => {
                 return handle_interrupt(
@@ -802,6 +870,25 @@ fn ensure_schema_file(workspace: &Path) -> Result<(), DynError> {
 "#;
     fs::write(schema_path, schema)?;
     Ok(())
+}
+
+fn validate_pack_outputs(pack_dir: &Path) -> Result<(), PackValidationError> {
+    let mut missing = Vec::new();
+    for required in REQUIRED_PACK_FILES {
+        let candidate = pack_dir.join(required);
+        if !candidate.is_file() {
+            missing.push((*required).to_string());
+        }
+    }
+
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        Err(PackValidationError {
+            pack_dir: pack_dir.to_path_buf(),
+            missing,
+        })
+    }
 }
 
 fn build_prompt(
