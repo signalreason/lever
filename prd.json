@@ -624,10 +624,16 @@
         "All linters pass, including cargo fmt --check and cargo clippy --all-targets -- -D warnings."
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260216T025419Z-3274 completed",
+        "last_run_id": "20260216T025419Z-3274",
+        "last_update_utc": "2026-02-16T02:59:57Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Create a regression test for disabled mode first, then ensure new code paths short-circuit cleanly without behavior drift."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "CTX-023",
       "title": "Add integration test that disabling context compile preserves legacy behavior",
       "verification": {

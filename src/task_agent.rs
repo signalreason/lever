@@ -1049,6 +1049,9 @@ fn emit_context_compile_report(
     task_id: &str,
     run_id: &str,
 ) -> Result<(), DynError> {
+    if !report.enabled {
+        return Ok(());
+    }
     report.write_report(&paths.context_compile_path)?;
     log_line(
         report.log_level(),
@@ -1059,6 +1062,9 @@ fn emit_context_compile_report(
 }
 
 fn append_context_compile_note(note: &str, report: &ContextCompileReport) -> String {
+    if !report.enabled {
+        return note.trim_end().to_string();
+    }
     if note.trim().is_empty() {
         report.note_fragment()
     } else {

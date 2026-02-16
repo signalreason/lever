@@ -85,7 +85,7 @@ Before running Codex, the task agent must ensure:
 
 ## Task agent run behavior
 
-- Create `.ralph/runs/<task_id>/<run_id>` and write the snapshot (`task.json`), assembly task input (`assembly-task.json`), context compile report (`context-compile.json`), prompt (`prompt.md`), and codex log (`codex.jsonl`). The prompt includes the base prompt file, the task title, every DoD bullet, the recommended approach, the authoritative JSON, and (when enabled) a concise lint summary derived from `pack/lint.json`.
+- Create `.ralph/runs/<task_id>/<run_id>` and write the snapshot (`task.json`), assembly task input (`assembly-task.json`), prompt (`prompt.md`), and codex log (`codex.jsonl`). When context compilation is enabled, also write the context compile report (`context-compile.json`). The prompt includes the base prompt file, the task title, every DoD bullet, the recommended approach, the authoritative JSON, and (when enabled) a concise lint summary derived from `pack/lint.json`.
 - Maintain a rate-limit cache under `.ralph/rate_limit.json` using the default TPM/RPM caps per model.
 - Run `codex exec --yolo --model <model> --output-schema .ralph/task_result.schema.json --output-last-message <result> --json --skip-git-repo-check`, streaming logs to `<run>/codex.jsonl` and collecting tokens for rate tracking.
 - Interpret the `result.json` schema (`outcome`, `dod_met`, `tests`, `notes`, `blockers`). If the file is missing, exit `10` and mark the task `blocked`.
