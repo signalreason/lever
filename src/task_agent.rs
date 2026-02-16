@@ -13,7 +13,7 @@ use std::{
     time::Duration,
 };
 
-use serde_json::{Map, Value};
+use serde_json::{json, Map, Value};
 
 use lever::context_compile::ContextCompileConfig;
 
@@ -130,6 +130,12 @@ pub fn run_task_agent(
     fs::write(
         &paths.task_snapshot_path,
         format!("{}\n", selection.raw_json),
+    )?;
+    let assembly_task_input = build_assembly_task_input(&selection);
+    let assembly_task_json = serde_json::to_string_pretty(&assembly_task_input)?;
+    fs::write(
+        &paths.assembly_task_path,
+        format!("{}\n", assembly_task_json),
     )?;
 
     ensure_schema_file(&config.workspace)?;
@@ -715,6 +721,32 @@ fn build_prompt(
     }
     fs::write(prompt_path, prompt)?;
     Ok(())
+}
+
+fn build_assembly_task_input(selection: &SelectedTask) -> Value {
+    let mut payload = json!({
+        "task_id": selection.task_id.clone(),
+        "title": selection.title.clone(),
+        "status": selection.status.clone(),
+        "model": selection.model.clone(),
+        "definition_of_done": selection.definition_of_done.clone(),
+        "recommended": {
+            "approach": selection.recommended_approach.clone(),
+        },
+    });
+
+    if !selection.verification_commands.is_empty() {
+        if let Some(map) = payload.as_object_mut() {
+            map.insert(
+                "verification".to_string(),
+                json!({
+                    "commands": selection.verification_commands.clone(),
+                }),
+            );
+        }
+    }
+
+    payload
 }
 
 fn rate_limit_sleep(

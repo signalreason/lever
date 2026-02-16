@@ -56,6 +56,7 @@
 ## Operational Files Under `.ralph/`
 
 - `.ralph/runs/<task_id>/<run_id>/task.json`: task snapshot at execution start.
+- `.ralph/runs/<task_id>/<run_id>/assembly-task.json`: assembly task input derived from selected task metadata.
 - `.ralph/runs/<task_id>/<run_id>/prompt.md`: assembled prompt sent to Codex.
 - `.ralph/runs/<task_id>/<run_id>/codex.jsonl`: Codex JSON event stream.
 - `.ralph/runs/<task_id>/<run_id>/result.json`: structured result payload.
