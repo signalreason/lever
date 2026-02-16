@@ -40,6 +40,29 @@ The `lever` binary is the canonical entry point. Run `lever` once to execute the
 - `--next` selects the first task whose status is not `completed` and whose model is not `human`; it cannot be combined with `--task-id`.
 - `--context-compile` enables context compilation for each run and `--no-context-compile` disables it; `--context-failure-policy <best-effort|required>` selects how failures are handled (default: best-effort); `--context-token-budget <TOKENS>` sets the context compilation token budget (default: 8000); `--assembly-path <PATH>` overrides the Assembly executable used for context compilation (default: `assembly`); `--prompt-lint-summary` injects a concise lint summary from `pack/lint.json` when available.
 
+### Context compilation
+
+Context compilation runs Assembly before prompt construction to build a context pack under `.ralph/runs/<task_id>/<run_id>/pack`. The task agent then injects a lint summary and compiled context into the prompt when available.
+
+Flags:
+- `--context-compile` enables context compilation for each run.
+- `--no-context-compile` disables context compilation (no Assembly run, no context-compile report).
+- `--context-failure-policy <best-effort|required>` controls failure handling; default `best-effort`.
+- `--context-token-budget <TOKENS>` sets the token budget (must be >= 1; default 8000).
+- `--assembly-path <PATH>` overrides the Assembly executable (default `assembly`).
+- `--prompt-lint-summary` injects a summary from `pack/lint.json` when available.
+
+Lifecycle and artifacts:
+- When enabled, Lever validates the Assembly CLI contract and runs `assembly build` to generate the pack.
+- Required pack outputs are `manifest.json`, `index.json`, `context.md`, `policy.md`, and `lint.json`.
+- Assembly artifacts are written under each run: `assembly-task.json`, `assembly-summary.json`, `assembly.stdout.log`, and `assembly.stderr.log`.
+- The context compile report lives at `.ralph/runs/<task_id>/<run_id>/context-compile.json` and includes `enabled`, `status` (`skipped|succeeded|failed`), `policy` (`best-effort|required`), `policy_outcome` (`skipped|proceeded|continued|blocked`), `pack_dir`, `pack_files`, and `pack_missing`.
+- When present, the lint summary is inserted before compiled context; compiled context appends a provenance line referencing `pack/manifest.json` and the current git commit.
+
+Failure behavior:
+- best-effort continues without compiled context and lint summary; the report records `status=failed` and `policy_outcome=continued`.
+- required blocks the run, marks the task `blocked`, and exits with code `13` after writing the report (`policy_outcome=blocked`).
+
 ### Loop semantics
 
 `--loop` accepts an optional count. Passing `--loop` with no value (or `--loop 0`) keeps cycling until a terminal stop reason occurs (no tasks, human input request, blocked run, etc.). Any positive integer limits the number of task-agent invocations; once the limit is reached, `lever` logs `lever: --loop limit reached (<count>)` and exits even if runnable tasks remain. Without `--loop`, `lever` runs only one iteration, so you can rely on the existing `--task-id` or implicit selection behavior for ad-hoc task-agent runs.

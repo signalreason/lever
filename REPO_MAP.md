@@ -11,6 +11,7 @@
   - `main.rs`: CLI args, task discovery/selection, `--loop` behavior, internal vs external command path, git workspace guard.
   - `lib.rs`: shared library exports used by internal validator binaries.
   - `assembly_contract.rs`: pinned Assembly CLI contract definitions and validation helpers.
+  - `context_compile.rs`: defaults and configuration for context compilation (token budget, policies, exclude globs).
   - `task_agent.rs`: task execution lifecycle (selection, prompt build, Codex run, result parsing, status updates, verification, commits).
   - `rate_limit.rs`: request/token window accounting stored in `.ralph/rate_limit.json`.
   - `task_metadata.rs`: required metadata validation (`title`, `definition_of_done`, `recommended.approach`).
@@ -43,6 +44,13 @@
 5. The task agent updates task status + observability fields in the tasks file, runs verification, and commits progress (`src/task_agent.rs`).
 6. `lever` decides whether to continue looping, stop, or propagate an exit condition (`src/main.rs`).
 
+## Context Compile Lifecycle
+
+- Enabled via `--context-compile` (disabled via `--no-context-compile`); Assembly contract is validated before running.
+- Assembly writes `.ralph/runs/<task_id>/<run_id>/pack` with `manifest.json`, `index.json`, `context.md`, `policy.md`, and `lint.json`.
+- The context compile report `.ralph/runs/<task_id>/<run_id>/context-compile.json` records `enabled`, `status`, `policy`, `policy_outcome`, `pack_dir`, `pack_files`, and `pack_missing`.
+- `best-effort` continues without compiled context; `required` blocks the run and exits with code `13` after writing the report.
+
 ## Verification Resolution Order
 
 `src/task_agent.rs` chooses verification in this order:
@@ -57,10 +65,17 @@
 
 - `.ralph/runs/<task_id>/<run_id>/task.json`: task snapshot at execution start.
 - `.ralph/runs/<task_id>/<run_id>/assembly-task.json`: assembly task input derived from selected task metadata.
+- `.ralph/runs/<task_id>/<run_id>/assembly-summary.json`: Assembly summary JSON emitted by `assembly build`.
 - `.ralph/runs/<task_id>/<run_id>/prompt.md`: assembled prompt sent to Codex.
 - `.ralph/runs/<task_id>/<run_id>/codex.jsonl`: Codex JSON event stream.
 - `.ralph/runs/<task_id>/<run_id>/result.json`: structured result payload.
 - `.ralph/runs/<task_id>/<run_id>/verify.log`: verification output.
+- `.ralph/runs/<task_id>/<run_id>/context-compile.json`: context compilation report (only when enabled).
+- `.ralph/runs/<task_id>/<run_id>/pack/manifest.json`: pack manifest for compiled context.
+- `.ralph/runs/<task_id>/<run_id>/pack/index.json`: pack index for compiled context.
+- `.ralph/runs/<task_id>/<run_id>/pack/context.md`: compiled context body.
+- `.ralph/runs/<task_id>/<run_id>/pack/policy.md`: policy summary for compiled context.
+- `.ralph/runs/<task_id>/<run_id>/pack/lint.json`: lint output summarized into the prompt when `--prompt-lint-summary` is used.
 - `.ralph/rate_limit.json`: rolling token/request history.
 - `.ralph/task_result.schema.json`: schema enforced for Codex result output.
 
