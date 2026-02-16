@@ -512,10 +512,16 @@
         "All linters pass, including cargo fmt --check and cargo clippy --all-targets -- -D warnings."
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260216T024017Z-3274 completed",
+        "last_run_id": "20260216T024017Z-3274",
+        "last_update_utc": "2026-02-16T02:43:21Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Add a focused bash integration test with a deterministic Assembly stub, then implement only the code required to make it pass."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "CTX-019",
       "title": "Add integration test for successful context compilation and pack placement",
       "verification": {
