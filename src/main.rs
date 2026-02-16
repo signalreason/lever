@@ -16,8 +16,8 @@ use std::{
 use crate::task_metadata::{
     validate_task_metadata as validate_task_metadata_raw, TaskMetadataError,
 };
-use clap::{value_parser, Parser};
-use lever::context_compile::ContextCompileConfig;
+use clap::{value_parser, Parser, ValueEnum};
+use lever::context_compile::{ContextCompileConfig, ContextFailurePolicy};
 use serde_json::Value;
 
 mod rate_limit;
@@ -48,6 +48,7 @@ struct ExecutionConfig {
     reset_task: bool,
     context_compile: ContextCompileConfig,
     context_compile_override: Option<bool>,
+    context_failure_policy_override: Option<ContextFailurePolicy>,
 }
 
 struct GitWorkspaceGuard {
@@ -224,12 +225,37 @@ struct LeverArgs {
     no_context_compile: bool,
 
     #[arg(
+        long = "context-failure-policy",
+        value_enum,
+        value_name = "POLICY",
+        help = "Context compile failure policy (best-effort continues, required fails the run)"
+    )]
+    context_failure_policy: Option<ContextFailurePolicyArg>,
+
+    #[arg(
         long = "command-path",
         value_name = "PATH",
         default_value = DEFAULT_COMMAND_PATH,
         help = "Executable invoked for each iteration (use 'internal' for Rust task agent)"
     )]
     command_path: PathBuf,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, ValueEnum)]
+enum ContextFailurePolicyArg {
+    #[value(name = "best-effort")]
+    BestEffort,
+    #[value(name = "required")]
+    Required,
+}
+
+impl From<ContextFailurePolicyArg> for ContextFailurePolicy {
+    fn from(value: ContextFailurePolicyArg) -> Self {
+        match value {
+            ContextFailurePolicyArg::BestEffort => ContextFailurePolicy::BestEffort,
+            ContextFailurePolicyArg::Required => ContextFailurePolicy::Required,
+        }
+    }
 }
 
 fn validate_lever_args(args: &LeverArgs) -> Result<(), DynError> {
@@ -248,9 +274,15 @@ fn validate_lever_args(args: &LeverArgs) -> Result<(), DynError> {
 fn resolve_context_compile_config(
     enable_flag: bool,
     disable_flag: bool,
-) -> (ContextCompileConfig, Option<bool>) {
+    policy: Option<ContextFailurePolicyArg>,
+) -> (
+    ContextCompileConfig,
+    Option<bool>,
+    Option<ContextFailurePolicy>,
+) {
     let mut config = ContextCompileConfig::default();
     let mut override_flag = None;
+    let mut policy_override = None;
     if enable_flag {
         config.enabled = true;
         override_flag = Some(true);
@@ -258,7 +290,12 @@ fn resolve_context_compile_config(
         config.enabled = false;
         override_flag = Some(false);
     }
-    (config, override_flag)
+    if let Some(policy) = policy {
+        let resolved = ContextFailurePolicy::from(policy);
+        config.policy = resolved;
+        policy_override = Some(resolved);
+    }
+    (config, override_flag, policy_override)
 }
 
 fn main() -> Result<(), DynError> {
@@ -277,11 +314,12 @@ fn main() -> Result<(), DynError> {
         delay,
         context_compile,
         no_context_compile,
+        context_failure_policy,
         command_path,
     } = args;
 
-    let (context_compile, context_compile_override) =
-        resolve_context_compile_config(context_compile, no_context_compile);
+    let (context_compile, context_compile_override, context_failure_policy_override) =
+        resolve_context_compile_config(context_compile, no_context_compile, context_failure_policy);
 
     let resolved = resolve_paths(workspace, tasks, prompt, command_path)?;
     let ResolvedPaths {
@@ -341,6 +379,7 @@ fn main() -> Result<(), DynError> {
         reset_task,
         context_compile,
         context_compile_override,
+        context_failure_policy_override,
     };
 
     if let Err(err) = run_iterations(&exec_config, loop_mode, delay_duration, &shutdown_flag) {
@@ -979,7 +1018,19 @@ impl ExecutionConfig {
             }
         }
 
+        if let Some(policy) = self.context_failure_policy_override {
+            args.push("--context-failure-policy".into());
+            args.push(context_failure_policy_arg(policy).into());
+        }
+
         args
+    }
+}
+
+fn context_failure_policy_arg(policy: ContextFailurePolicy) -> &'static str {
+    match policy {
+        ContextFailurePolicy::BestEffort => "best-effort",
+        ContextFailurePolicy::Required => "required",
     }
 }
 

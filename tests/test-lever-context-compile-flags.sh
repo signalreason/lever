@@ -79,6 +79,44 @@ if ! grep -Fxq -- "--no-context-compile" "$args_file"; then
   exit 1
 fi
 
+args_file="$args_dir/args-best-effort.txt"
+ARGS_FILE="$args_file" "$lever_bin" \
+  --workspace "$repo_dir" \
+  --tasks prd.json \
+  --command-path "$stub_dir/flag-stub" \
+  --task-id T1 \
+  --context-failure-policy best-effort \
+  >/dev/null
+
+if ! grep -Fxq -- "--context-failure-policy" "$args_file"; then
+  echo "Expected --context-failure-policy to be passed to task agent" >&2
+  exit 1
+fi
+
+if ! grep -Fxq -- "best-effort" "$args_file"; then
+  echo "Expected best-effort policy value to be passed to task agent" >&2
+  exit 1
+fi
+
+args_file="$args_dir/args-required.txt"
+ARGS_FILE="$args_file" "$lever_bin" \
+  --workspace "$repo_dir" \
+  --tasks prd.json \
+  --command-path "$stub_dir/flag-stub" \
+  --task-id T1 \
+  --context-failure-policy required \
+  >/dev/null
+
+if ! grep -Fxq -- "--context-failure-policy" "$args_file"; then
+  echo "Expected --context-failure-policy to be passed to task agent (required)" >&2
+  exit 1
+fi
+
+if ! grep -Fxq -- "required" "$args_file"; then
+  echo "Expected required policy value to be passed to task agent" >&2
+  exit 1
+fi
+
 set +e
 conflict_output="$($lever_bin \
   --workspace "$repo_dir" \
@@ -98,5 +136,26 @@ fi
 
 if ! grep -q "cannot be used" <<<"$conflict_output"; then
   echo "Expected a conflict error for context compile flags" >&2
+  exit 1
+fi
+
+set +e
+policy_output="$($lever_bin \
+  --workspace "$repo_dir" \
+  --tasks prd.json \
+  --command-path "$stub_dir/flag-stub" \
+  --task-id T1 \
+  --context-failure-policy nope \
+  2>&1)"
+policy_status=$?
+set -e
+
+if [[ $policy_status -eq 0 ]]; then
+  echo "Expected invalid policy to fail" >&2
+  exit 1
+fi
+
+if ! grep -q "possible values" <<<"$policy_output"; then
+  echo "Expected invalid policy error to list possible values" >&2
   exit 1
 fi

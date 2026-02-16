@@ -92,10 +92,16 @@
         "All linters pass, including cargo fmt --check and cargo clippy --all-targets -- -D warnings."
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260216T010823Z-3274 completed",
+        "last_run_id": "20260216T010823Z-3274",
+        "last_update_utc": "2026-02-16T01:12:39Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Define a strict policy enum, test accepted and rejected values first, and then wire parsing results into runtime config."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "CTX-004",
       "title": "Add CLI support for context failure policy (best-effort vs required)",
       "verification": {
