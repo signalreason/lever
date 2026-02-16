@@ -369,7 +369,7 @@ pub fn run_task_agent(
         VerificationResult::skipped()
     };
 
-    if verify.log_command.as_deref().unwrap_or("").is_empty() == false {
+    if !verify.log_command.as_deref().unwrap_or("").is_empty() {
         if verify.ok {
             log_line(
                 "INFO",
@@ -803,7 +803,7 @@ fn parse_usage_tokens(log_path: &Path) -> Option<u64> {
     let mut usage_tokens = None;
     let file = File::open(log_path).ok()?;
     let reader = io::BufReader::new(file);
-    for line in reader.lines().flatten() {
+    for line in reader.lines().map_while(Result::ok) {
         if !line.trim_start().starts_with('{') {
             continue;
         }
@@ -972,7 +972,7 @@ impl CodexLogStream {
 }
 
 fn compact_text(input: &str, limit: usize) -> String {
-    let mut normalized = input.replace('\n', " ").replace('\r', " ");
+    let mut normalized = input.replace(['\n', '\r'], " ");
     if normalized.len() > limit {
         normalized.truncate(limit);
         normalized.push_str("...");
@@ -1031,7 +1031,7 @@ fn git_status(workspace: &Path, args: &[&str]) -> Result<(), DynError> {
 }
 
 fn commit_subject_from_title(title: &str, task_id: &str) -> String {
-    let normalized = title.replace('\n', " ").replace('\r', " ");
+    let normalized = title.replace(['\n', '\r'], " ");
     let mut subject = normalized.split_whitespace().collect::<Vec<_>>().join(" ");
     subject = subject.trim_end_matches('.').trim().to_string();
     if subject.is_empty() {
@@ -1358,7 +1358,7 @@ fn has_python_tests(workspace: &Path) -> Result<bool, DynError> {
     if !tests_dir.is_dir() {
         return Ok(false);
     }
-    Ok(dir_contains_py(&tests_dir)?)
+    dir_contains_py(&tests_dir)
 }
 
 fn dir_contains_py(path: &Path) -> Result<bool, DynError> {

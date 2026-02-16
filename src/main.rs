@@ -538,7 +538,7 @@ fn resolve_command_path(path: PathBuf, workspace: &Path) -> Result<PathBuf, DynE
 
     if path_str.contains('/') || path_str.contains('\\') {
         let anchored = workspace.join(&path);
-        return canonicalize_or_fallback(&anchored, &path);
+        canonicalize_or_fallback(&anchored, &path)
     } else {
         Ok(path)
     }
@@ -781,14 +781,12 @@ fn run_loop_iterations(
             }
         }
 
-        if delay > Duration::ZERO {
-            if sleep_with_shutdown(delay, shutdown_flag) {
-                println!(
-                    "lever: shutdown requested during delay before iteration {}",
-                    iteration + 1
-                );
-                break;
-            }
+        if delay > Duration::ZERO && sleep_with_shutdown(delay, shutdown_flag) {
+            println!(
+                "lever: shutdown requested during delay before iteration {}",
+                iteration + 1
+            );
+            break;
         }
     }
 
@@ -832,7 +830,7 @@ fn run_once(
         restored_prompt = true;
     }
 
-    let result = if internal {
+    let result: Result<ExitStatus, DynError> = if internal {
         let agent_config = task_agent::TaskAgentConfig {
             tasks_path: config.tasks_path.clone(),
             prompt_path: temp_prompt_path.clone().unwrap(),
@@ -867,10 +865,7 @@ fn run_once(
         let _ = fs::remove_file(temp_prompt_path);
     }
 
-    let status = match result {
-        Ok(status) => status,
-        Err(err) => return Err(err),
-    };
+    let status = result?;
 
     if shutdown_flag.load(Ordering::SeqCst) && matches!(status.code(), Some(130)) {
         return Ok(status);
@@ -907,13 +902,14 @@ impl ExecutionConfig {
         allow_next: bool,
         prompt_path: &Path,
     ) -> Vec<OsString> {
-        let mut args = Vec::new();
-        args.push("--tasks".into());
-        args.push(self.tasks_path.clone().into_os_string());
-        args.push("--workspace".into());
-        args.push(self.workspace.clone().into_os_string());
-        args.push("--prompt".into());
-        args.push(prompt_path.as_os_str().to_os_string());
+        let mut args = vec![
+            "--tasks".into(),
+            self.tasks_path.clone().into_os_string(),
+            "--workspace".into(),
+            self.workspace.clone().into_os_string(),
+            "--prompt".into(),
+            prompt_path.as_os_str().to_os_string(),
+        ];
 
         if let Some(assignee) = &self.assignee {
             args.push("--assignee".into());

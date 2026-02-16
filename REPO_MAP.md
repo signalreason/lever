@@ -9,9 +9,12 @@
 
 - `src/`
   - `main.rs`: CLI args, task discovery/selection, `--loop` behavior, internal vs external command path, git workspace guard.
+  - `lib.rs`: shared library exports used by internal validator binaries.
+  - `assembly_contract.rs`: pinned Assembly CLI contract definitions and validation helpers.
   - `task_agent.rs`: task execution lifecycle (selection, prompt build, Codex run, result parsing, status updates, verification, commits).
   - `rate_limit.rs`: request/token window accounting stored in `.ralph/rate_limit.json`.
   - `task_metadata.rs`: required metadata validation (`title`, `definition_of_done`, `recommended.approach`).
+  - `bin/validate_assembly_contract.rs`: CLI validator for the Assembly contract expected by Lever.
 - `tests/`
   - `run.sh`: executes all `tests/test-*.sh`.
   - `helpers.sh`: shared shell helpers.
@@ -20,6 +23,7 @@
   - `autonomous-senior-engineer.prompt.md`: base prompt template used unless `--prompt` overrides.
 - `docs/`
   - `cli-contract.md`: CLI semantics and expected behavior.
+  - `assembly-contract.md`: pinned Assembly CLI contract used by Lever context compilation.
   - `task-schema-details.md`: task JSON schema details and constraints.
 - `.github/workflows/tests.yml`
   - CI workflow that installs deps and runs `./tests/run.sh`.

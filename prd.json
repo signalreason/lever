@@ -1,19 +1,25 @@
 {
   "tasks": [
     {
-      "task_id": "CTX-001",
-      "status": "unstarted",
-      "model": "gpt-5.2-codex",
-      "title": "Pin Lever integration to the finalized Assembly interface",
       "definition_of_done": [
         "Write or update automated tests for Assembly contract assumptions before implementation and confirm they fail for the targeted behavior first.",
         "Lever validates and documents the finalized Assembly interface contract before context compilation runs.",
         "All tests pass, including ./tests/run.sh.",
         "All linters pass, including cargo fmt --check and cargo clippy --all-targets -- -D warnings."
       ],
+      "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260216T005006Z-3274 completed",
+        "last_run_id": "20260216T005006Z-3274",
+        "last_update_utc": "2026-02-16T00:58:42Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Start with a failing contract-validation test, then add minimal contract pinning and clear error messaging for mismatches."
       },
+      "status": "completed",
+      "task_id": "CTX-001",
+      "title": "Pin Lever integration to the finalized Assembly interface",
       "verification": {
         "commands": [
           "./tests/run.sh",
@@ -23,19 +29,19 @@
       }
     },
     {
-      "task_id": "CTX-002",
-      "status": "unstarted",
-      "model": "gpt-5.2-codex",
-      "title": "Add a ContextCompileConfig with safe defaults",
       "definition_of_done": [
         "Write or update automated tests for config defaults before implementation and confirm they fail for the targeted behavior first.",
         "A dedicated runtime config type exists for context compilation and captures all required options with deterministic defaults.",
         "All tests pass, including ./tests/run.sh.",
         "All linters pass, including cargo fmt --check and cargo clippy --all-targets -- -D warnings."
       ],
+      "model": "gpt-5.2-codex",
       "recommended": {
         "approach": "Introduce a focused config struct and default implementation first, then wire only the minimum needed fields."
       },
+      "status": "unstarted",
+      "task_id": "CTX-002",
+      "title": "Add a ContextCompileConfig with safe defaults",
       "verification": {
         "commands": [
           "./tests/run.sh",
@@ -45,19 +51,19 @@
       }
     },
     {
-      "task_id": "CTX-003",
-      "status": "unstarted",
-      "model": "gpt-5.2-codex",
-      "title": "Add CLI support to enable or disable context compilation",
       "definition_of_done": [
         "Write or update automated CLI parsing tests before implementation and confirm they fail for the targeted behavior first.",
         "Operators can explicitly enable or disable context compilation through CLI flags, and help text documents the behavior.",
         "All tests pass, including ./tests/run.sh.",
         "All linters pass, including cargo fmt --check and cargo clippy --all-targets -- -D warnings."
       ],
+      "model": "gpt-5.2-codex",
       "recommended": {
         "approach": "Add parsing and validation coverage first, then implement flag wiring into the new context compile config."
       },
+      "status": "unstarted",
+      "task_id": "CTX-003",
+      "title": "Add CLI support to enable or disable context compilation",
       "verification": {
         "commands": [
           "./tests/run.sh",
@@ -67,19 +73,19 @@
       }
     },
     {
-      "task_id": "CTX-004",
-      "status": "unstarted",
-      "model": "gpt-5.2-codex",
-      "title": "Add CLI support for context failure policy (best-effort vs required)",
       "definition_of_done": [
         "Write or update automated CLI parsing tests before implementation and confirm they fail for the targeted behavior first.",
         "CLI policy selection maps deterministically to runtime behavior with clear validation and operator-facing help text.",
         "All tests pass, including ./tests/run.sh.",
         "All linters pass, including cargo fmt --check and cargo clippy --all-targets -- -D warnings."
       ],
+      "model": "gpt-5.2-codex",
       "recommended": {
         "approach": "Define a strict policy enum, test accepted and rejected values first, and then wire parsing results into runtime config."
       },
+      "status": "unstarted",
+      "task_id": "CTX-004",
+      "title": "Add CLI support for context failure policy (best-effort vs required)",
       "verification": {
         "commands": [
           "./tests/run.sh",
@@ -89,19 +95,19 @@
       }
     },
     {
-      "task_id": "CTX-005",
-      "status": "unstarted",
-      "model": "gpt-5.2-codex",
-      "title": "Add CLI support for context token budget",
       "definition_of_done": [
         "Write or update automated CLI validation tests before implementation and confirm they fail for the targeted behavior first.",
         "Token budget is configurable via CLI, validated, and propagated into runtime context compile configuration.",
         "All tests pass, including ./tests/run.sh.",
         "All linters pass, including cargo fmt --check and cargo clippy --all-targets -- -D warnings."
       ],
+      "model": "gpt-5.2-codex",
       "recommended": {
         "approach": "Test boundary values first, then implement parsing and propagation with strict validation errors for invalid input."
       },
+      "status": "unstarted",
+      "task_id": "CTX-005",
+      "title": "Add CLI support for context token budget",
       "verification": {
         "commands": [
           "./tests/run.sh",
@@ -111,19 +117,19 @@
       }
     },
     {
-      "task_id": "CTX-006",
-      "status": "unstarted",
-      "model": "gpt-5.2-codex",
-      "title": "Add CLI support for Assembly executable path override",
       "definition_of_done": [
         "Write or update automated CLI parsing tests before implementation and confirm they fail for the targeted behavior first.",
         "Operators can override the Assembly executable path and Lever validates/uses the configured command path.",
         "All tests pass, including ./tests/run.sh.",
         "All linters pass, including cargo fmt --check and cargo clippy --all-targets -- -D warnings."
       ],
+      "model": "gpt-5.2-codex",
       "recommended": {
         "approach": "Add tests that assert argument forwarding and validation behavior, then wire the flag into command construction."
       },
+      "status": "unstarted",
+      "task_id": "CTX-006",
+      "title": "Add CLI support for Assembly executable path override",
       "verification": {
         "commands": [
           "./tests/run.sh",
@@ -133,19 +139,19 @@
       }
     },
     {
-      "task_id": "CTX-007",
-      "status": "unstarted",
-      "model": "gpt-5.2-codex",
-      "title": "Thread context compile configuration into task-agent run inputs",
       "definition_of_done": [
         "Write or update automated tests for config handoff before implementation and confirm they fail for the targeted behavior first.",
         "Task-agent run lifecycle receives complete context compile configuration without altering existing non-context behavior.",
         "All tests pass, including ./tests/run.sh.",
         "All linters pass, including cargo fmt --check and cargo clippy --all-targets -- -D warnings."
       ],
+      "model": "gpt-5.2-codex",
       "recommended": {
         "approach": "Start with a constructor/input test that captures the config handoff, then thread the fields through existing run plumbing."
       },
+      "status": "unstarted",
+      "task_id": "CTX-007",
+      "title": "Thread context compile configuration into task-agent run inputs",
       "verification": {
         "commands": [
           "./tests/run.sh",
@@ -155,19 +161,19 @@
       }
     },
     {
-      "task_id": "CTX-008",
-      "status": "unstarted",
-      "model": "gpt-5.2-codex",
-      "title": "Add deterministic helper for run-scoped pack artifact paths",
       "definition_of_done": [
         "Write or update automated path-generation tests before implementation and confirm they fail for the targeted behavior first.",
         "Lever computes and uses deterministic pack paths under .ralph/runs/<task_id>/<run_id>/pack/.",
         "All tests pass, including ./tests/run.sh.",
         "All linters pass, including cargo fmt --check and cargo clippy --all-targets -- -D warnings."
       ],
+      "model": "gpt-5.2-codex",
       "recommended": {
         "approach": "Define path expectations in tests first, then centralize path construction in a single helper reused by invocation and prompt code."
       },
+      "status": "unstarted",
+      "task_id": "CTX-008",
+      "title": "Add deterministic helper for run-scoped pack artifact paths",
       "verification": {
         "commands": [
           "./tests/run.sh",
@@ -177,19 +183,19 @@
       }
     },
     {
-      "task_id": "CTX-009",
-      "status": "unstarted",
-      "model": "gpt-5.2-codex",
-      "title": "Persist Assembly task input for each run",
       "definition_of_done": [
         "Write or update automated tests for task input materialization before implementation and confirm they fail for the targeted behavior first.",
         "Each run writes the Assembly task input file used for compilation into run artifacts for auditing and reproduction.",
         "All tests pass, including ./tests/run.sh.",
         "All linters pass, including cargo fmt --check and cargo clippy --all-targets -- -D warnings."
       ],
+      "model": "gpt-5.2-codex",
       "recommended": {
         "approach": "Add an artifact-content test first, then generate the run-scoped task input from existing selected-task metadata."
       },
+      "status": "unstarted",
+      "task_id": "CTX-009",
+      "title": "Persist Assembly task input for each run",
       "verification": {
         "commands": [
           "./tests/run.sh",
@@ -199,19 +205,19 @@
       }
     },
     {
-      "task_id": "CTX-010",
-      "status": "unstarted",
-      "model": "gpt-5.2-codex",
-      "title": "Build Assembly command arguments in the task-agent lifecycle",
       "definition_of_done": [
         "Write or update automated command-construction tests before implementation and confirm they fail for the targeted behavior first.",
         "Assembly invocation arguments include repo, task input, task id, output pack path, token budget, and excludes as configured.",
         "All tests pass, including ./tests/run.sh.",
         "All linters pass, including cargo fmt --check and cargo clippy --all-targets -- -D warnings."
       ],
+      "model": "gpt-5.2-codex",
       "recommended": {
         "approach": "Lock expected argv in tests first, then implement a pure command-builder helper used by the run lifecycle."
       },
+      "status": "unstarted",
+      "task_id": "CTX-010",
+      "title": "Build Assembly command arguments in the task-agent lifecycle",
       "verification": {
         "commands": [
           "./tests/run.sh",
@@ -221,19 +227,19 @@
       }
     },
     {
-      "task_id": "CTX-011",
-      "status": "unstarted",
-      "model": "gpt-5.2-codex",
-      "title": "Execute Assembly and capture stdout/stderr in run artifacts",
       "definition_of_done": [
         "Write or update automated execution-path tests before implementation and confirm they fail for the targeted behavior first.",
         "Assembly process execution is integrated into the run lifecycle and captures stdout/stderr under the run directory for debugging.",
         "All tests pass, including ./tests/run.sh.",
         "All linters pass, including cargo fmt --check and cargo clippy --all-targets -- -D warnings."
       ],
+      "model": "gpt-5.2-codex",
       "recommended": {
         "approach": "Use a stub Assembly binary in tests first, then wire process execution and log capture with explicit error reporting."
       },
+      "status": "unstarted",
+      "task_id": "CTX-011",
+      "title": "Execute Assembly and capture stdout/stderr in run artifacts",
       "verification": {
         "commands": [
           "./tests/run.sh",
@@ -243,19 +249,19 @@
       }
     },
     {
-      "task_id": "CTX-012",
-      "status": "unstarted",
-      "model": "gpt-5.2-codex",
-      "title": "Validate required pack files after successful compilation",
       "definition_of_done": [
         "Write or update automated pack-validation tests before implementation and confirm they fail for the targeted behavior first.",
         "Lever verifies required pack outputs (manifest.json, index.json, context.md, policy.md, lint.json) before using compiled context.",
         "All tests pass, including ./tests/run.sh.",
         "All linters pass, including cargo fmt --check and cargo clippy --all-targets -- -D warnings."
       ],
+      "model": "gpt-5.2-codex",
       "recommended": {
         "approach": "Add explicit tests for missing-file scenarios first, then implement strict pack validation with actionable errors."
       },
+      "status": "unstarted",
+      "task_id": "CTX-012",
+      "title": "Validate required pack files after successful compilation",
       "verification": {
         "commands": [
           "./tests/run.sh",
@@ -265,19 +271,19 @@
       }
     },
     {
-      "task_id": "CTX-013",
-      "status": "unstarted",
-      "model": "gpt-5.2-codex",
-      "title": "Implement best-effort behavior when context compilation fails",
       "definition_of_done": [
         "Write or update automated failure-policy tests before implementation and confirm they fail for the targeted behavior first.",
         "In best-effort mode, context compile failure is logged clearly and the run continues without compiled context.",
         "All tests pass, including ./tests/run.sh.",
         "All linters pass, including cargo fmt --check and cargo clippy --all-targets -- -D warnings."
       ],
+      "model": "gpt-5.2-codex",
       "recommended": {
         "approach": "Define failing tests for compile errors first, then add policy-gated continuation behavior with explicit warning logs."
       },
+      "status": "unstarted",
+      "task_id": "CTX-013",
+      "title": "Implement best-effort behavior when context compilation fails",
       "verification": {
         "commands": [
           "./tests/run.sh",
@@ -287,19 +293,19 @@
       }
     },
     {
-      "task_id": "CTX-014",
-      "status": "unstarted",
-      "model": "gpt-5.2-codex",
-      "title": "Implement required-mode fail-fast behavior for context compilation",
       "definition_of_done": [
         "Write or update automated failure-policy tests before implementation and confirm they fail for the targeted behavior first.",
         "In required mode, context compile failure or invalid pack output fails the run before Codex execution with a clear error.",
         "All tests pass, including ./tests/run.sh.",
         "All linters pass, including cargo fmt --check and cargo clippy --all-targets -- -D warnings."
       ],
+      "model": "gpt-5.2-codex",
       "recommended": {
         "approach": "Create fail-fast tests for command failures and missing pack files first, then implement required-mode blocking semantics."
       },
+      "status": "unstarted",
+      "task_id": "CTX-014",
+      "title": "Implement required-mode fail-fast behavior for context compilation",
       "verification": {
         "commands": [
           "./tests/run.sh",
@@ -309,19 +315,19 @@
       }
     },
     {
-      "task_id": "CTX-015",
-      "status": "unstarted",
-      "model": "gpt-5.2-codex",
-      "title": "Append compiled context from pack/context.md to the Codex prompt",
       "definition_of_done": [
         "Write or update automated prompt-building tests before implementation and confirm they fail for the targeted behavior first.",
         "Prompt assembly appends compiled context from pack/context.md when available and leaves existing behavior unchanged when absent.",
         "All tests pass, including ./tests/run.sh.",
         "All linters pass, including cargo fmt --check and cargo clippy --all-targets -- -D warnings."
       ],
+      "model": "gpt-5.2-codex",
       "recommended": {
         "approach": "Add prompt snapshot-style tests first, then implement a single prompt-append path in task-agent prompt construction."
       },
+      "status": "unstarted",
+      "task_id": "CTX-015",
+      "title": "Append compiled context from pack/context.md to the Codex prompt",
       "verification": {
         "commands": [
           "./tests/run.sh",
@@ -331,19 +337,19 @@
       }
     },
     {
-      "task_id": "CTX-016",
-      "status": "unstarted",
-      "model": "gpt-5.2-codex",
-      "title": "Include context provenance (manifest path and commit SHA) in the prompt",
       "definition_of_done": [
         "Write or update automated prompt-building tests before implementation and confirm they fail for the targeted behavior first.",
         "Prompt includes concise provenance for compiled context, including manifest path and commit SHA, when context is present.",
         "All tests pass, including ./tests/run.sh.",
         "All linters pass, including cargo fmt --check and cargo clippy --all-targets -- -D warnings."
       ],
+      "model": "gpt-5.2-codex",
       "recommended": {
         "approach": "Extend prompt tests to assert provenance formatting first, then append provenance within existing context section handling."
       },
+      "status": "unstarted",
+      "task_id": "CTX-016",
+      "title": "Include context provenance (manifest path and commit SHA) in the prompt",
       "verification": {
         "commands": [
           "./tests/run.sh",
@@ -353,19 +359,19 @@
       }
     },
     {
-      "task_id": "CTX-017",
-      "status": "unstarted",
-      "model": "gpt-5.2-codex",
-      "title": "Add optional prompt injection for a concise lint summary",
       "definition_of_done": [
         "Write or update automated prompt-building tests before implementation and confirm they fail for the targeted behavior first.",
         "When enabled, prompt includes a concise lint summary derived from pack/lint.json; when disabled, lint findings stay out of the prompt.",
         "All tests pass, including ./tests/run.sh.",
         "All linters pass, including cargo fmt --check and cargo clippy --all-targets -- -D warnings."
       ],
+      "model": "gpt-5.2-codex",
       "recommended": {
         "approach": "Add tests for enabled and disabled modes first, then parse lint.json defensively and inject only concise, deterministic output."
       },
+      "status": "unstarted",
+      "task_id": "CTX-017",
+      "title": "Add optional prompt injection for a concise lint summary",
       "verification": {
         "commands": [
           "./tests/run.sh",
@@ -375,19 +381,19 @@
       }
     },
     {
-      "task_id": "CTX-018",
-      "status": "unstarted",
-      "model": "gpt-5.2-codex",
-      "title": "Record compile status and pack paths in run logs and task notes",
       "definition_of_done": [
         "Write or update automated logging/observability tests before implementation and confirm they fail for the targeted behavior first.",
         "Run artifacts and task notes clearly record context compile status, policy outcome, and pack artifact locations.",
         "All tests pass, including ./tests/run.sh.",
         "All linters pass, including cargo fmt --check and cargo clippy --all-targets -- -D warnings."
       ],
+      "model": "gpt-5.2-codex",
       "recommended": {
         "approach": "Capture expected logging/note strings in tests first, then wire consistent structured messages at compile decision points."
       },
+      "status": "unstarted",
+      "task_id": "CTX-018",
+      "title": "Record compile status and pack paths in run logs and task notes",
       "verification": {
         "commands": [
           "./tests/run.sh",
@@ -397,19 +403,19 @@
       }
     },
     {
-      "task_id": "CTX-019",
-      "status": "unstarted",
-      "model": "gpt-5.2-codex",
-      "title": "Add integration test for successful context compilation and pack placement",
       "definition_of_done": [
         "Write this integration test first and confirm it fails before implementation changes needed to satisfy it.",
         "A stub Assembly command verifies a successful run writes pack artifacts under .ralph/runs/<task_id>/<run_id>/pack/ and compiled context reaches the prompt path.",
         "All tests pass, including ./tests/run.sh.",
         "All linters pass, including cargo fmt --check and cargo clippy --all-targets -- -D warnings."
       ],
+      "model": "gpt-5.2-codex",
       "recommended": {
         "approach": "Add a focused bash integration test with a deterministic Assembly stub, then implement only the code required to make it pass."
       },
+      "status": "unstarted",
+      "task_id": "CTX-019",
+      "title": "Add integration test for successful context compilation and pack placement",
       "verification": {
         "commands": [
           "./tests/run.sh",
@@ -419,19 +425,19 @@
       }
     },
     {
-      "task_id": "CTX-020",
-      "status": "unstarted",
-      "model": "gpt-5.2-codex",
-      "title": "Add integration test for best-effort compile failure behavior",
       "definition_of_done": [
         "Write this integration test first and confirm it fails before implementation changes needed to satisfy it.",
         "A stub Assembly failure in best-effort mode confirms Lever logs a warning and still runs Codex without compiled context.",
         "All tests pass, including ./tests/run.sh.",
         "All linters pass, including cargo fmt --check and cargo clippy --all-targets -- -D warnings."
       ],
+      "model": "gpt-5.2-codex",
       "recommended": {
         "approach": "Create a failing integration test with an intentionally failing Assembly stub, then implement best-effort continuation semantics."
       },
+      "status": "unstarted",
+      "task_id": "CTX-020",
+      "title": "Add integration test for best-effort compile failure behavior",
       "verification": {
         "commands": [
           "./tests/run.sh",
@@ -441,19 +447,19 @@
       }
     },
     {
-      "task_id": "CTX-021",
-      "status": "unstarted",
-      "model": "gpt-5.2-codex",
-      "title": "Add integration test for required-mode compile failure behavior",
       "definition_of_done": [
         "Write this integration test first and confirm it fails before implementation changes needed to satisfy it.",
         "A stub Assembly failure in required mode confirms Lever exits before Codex execution and surfaces a clear blocking error.",
         "All tests pass, including ./tests/run.sh.",
         "All linters pass, including cargo fmt --check and cargo clippy --all-targets -- -D warnings."
       ],
+      "model": "gpt-5.2-codex",
       "recommended": {
         "approach": "Add a failing required-mode integration test that asserts no Codex invocation, then implement fail-fast policy handling."
       },
+      "status": "unstarted",
+      "task_id": "CTX-021",
+      "title": "Add integration test for required-mode compile failure behavior",
       "verification": {
         "commands": [
           "./tests/run.sh",
@@ -463,19 +469,19 @@
       }
     },
     {
-      "task_id": "CTX-022",
-      "status": "unstarted",
-      "model": "gpt-5.2-codex",
-      "title": "Add integration test for missing required pack files in required mode",
       "definition_of_done": [
         "Write this integration test first and confirm it fails before implementation changes needed to satisfy it.",
         "A partial/invalid pack output case confirms required mode blocks when expected pack files are missing.",
         "All tests pass, including ./tests/run.sh.",
         "All linters pass, including cargo fmt --check and cargo clippy --all-targets -- -D warnings."
       ],
+      "model": "gpt-5.2-codex",
       "recommended": {
         "approach": "Use a stub Assembly command that omits specific pack files, assert required-mode failure, then implement strict pack validation."
       },
+      "status": "unstarted",
+      "task_id": "CTX-022",
+      "title": "Add integration test for missing required pack files in required mode",
       "verification": {
         "commands": [
           "./tests/run.sh",
@@ -485,19 +491,19 @@
       }
     },
     {
-      "task_id": "CTX-023",
-      "status": "unstarted",
-      "model": "gpt-5.2-codex",
-      "title": "Add integration test that disabling context compile preserves legacy behavior",
       "definition_of_done": [
         "Write this integration test first and confirm it fails before implementation changes needed to satisfy it.",
         "With context compilation disabled, task selection, prompt generation, and run semantics remain backward compatible.",
         "All tests pass, including ./tests/run.sh.",
         "All linters pass, including cargo fmt --check and cargo clippy --all-targets -- -D warnings."
       ],
+      "model": "gpt-5.2-codex",
       "recommended": {
         "approach": "Create a regression test for disabled mode first, then ensure new code paths short-circuit cleanly without behavior drift."
       },
+      "status": "unstarted",
+      "task_id": "CTX-023",
+      "title": "Add integration test that disabling context compile preserves legacy behavior",
       "verification": {
         "commands": [
           "./tests/run.sh",
@@ -507,19 +513,19 @@
       }
     },
     {
-      "task_id": "CTX-024",
-      "status": "unstarted",
-      "model": "gpt-5.2-codex",
-      "title": "Update README and REPO_MAP with context compile lifecycle and flags",
       "definition_of_done": [
         "Write or update automated tests for any behavior/documentation-coupled outputs before implementation and confirm they fail for the targeted behavior first.",
         "README.md and REPO_MAP.md document new context compile flags, lifecycle, artifact paths, and failure-mode semantics accurately.",
         "All tests pass, including ./tests/run.sh.",
         "All linters pass, including cargo fmt --check and cargo clippy --all-targets -- -D warnings."
       ],
+      "model": "gpt-5.2-codex",
       "recommended": {
         "approach": "After implementation behavior is covered by tests, update docs to match exact CLI/help text and run artifact behavior."
       },
+      "status": "unstarted",
+      "task_id": "CTX-024",
+      "title": "Update README and REPO_MAP with context compile lifecycle and flags",
       "verification": {
         "commands": [
           "./tests/run.sh",

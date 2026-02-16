@@ -98,6 +98,14 @@ lever --loop --tasks prd.json 2>&1 | tee .ralph/ralph.log | lnav -
 cargo run --quiet --bin validate_prd -- --tasks prd.json --schema prd.schema.json
 ```
 
+## Assembly contract validation
+
+Lever pins the Assembly CLI contract in `docs/assembly-contract.md`. You can validate a local Assembly installation with:
+
+```bash
+cargo run --quiet --bin validate_assembly_contract -- --assembly assembly
+```
+
 ## Task schema guidance
 
 Tasks must conform to `prd.schema.json`. The schema requires the following metadata for every task entry:
