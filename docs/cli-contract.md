@@ -14,6 +14,7 @@ The focus is on flag mappings, discovery defaults, task selection rules, loop se
 - **Workspace:** defaults to the current working directory. `--workspace` changes the directory, and every other path (`--tasks`, `--prompt`, the task-agent binary) is resolved relative to the workspace.
 - **Assignee log label:** `ASSIGNEE` is read by the internal task agent for log metadata and is never written back to the task file.
 - **Task agent binary:** `--command-path` selects the executable used per iteration. The default is `internal` (the Rust task agent). If the argument contains a slash it is resolved relative to the workspace; otherwise the CLI looks the command up on `PATH`.
+- **Assembly binary:** `--assembly-path` overrides the Assembly executable (default `assembly`). Paths with slashes are resolved relative to the workspace; bare commands are resolved via `PATH`. Lever validates the Assembly CLI contract when context compilation is enabled or an override is supplied.
 
 ## Loop mode (`--loop`)
 
@@ -32,6 +33,7 @@ Flags:
 | `--prompt <path>` | overrides the prompt file used for both loop logging and the task agent prompt. | forwarded via `--prompt`. |
 | `--assignee <name>` | overrides the assignee label (used by external task agents). | not written to task metadata. |
 | `--command-path <path>` | identifies which binary to run for a task invocation. | `internal` selects the Rust task agent. |
+| `--assembly-path <path>` | overrides the Assembly executable for context compilation. | validated against `docs/assembly-contract.md`. |
 | `--delay <seconds>` | sleeps between cycles (default `0`). | requires `--loop`. |
 | `--workspace <path>` | changes the workspace directory. | also passed to the task agent. |
 | `--loop <count>` | limit for task-agent invocations; default `0`. | n/a |

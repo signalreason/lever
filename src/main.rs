@@ -50,6 +50,7 @@ struct ExecutionConfig {
     context_compile_override: Option<bool>,
     context_failure_policy_override: Option<ContextFailurePolicy>,
     context_token_budget_override: Option<u64>,
+    context_assembly_override: Option<PathBuf>,
 }
 
 struct GitWorkspaceGuard {
@@ -242,6 +243,13 @@ struct LeverArgs {
     context_token_budget: Option<u64>,
 
     #[arg(
+        long = "assembly-path",
+        value_name = "PATH",
+        help = "Assembly executable path for context compilation (default: assembly)"
+    )]
+    assembly_path: Option<PathBuf>,
+
+    #[arg(
         long = "command-path",
         value_name = "PATH",
         default_value = DEFAULT_COMMAND_PATH,
@@ -267,6 +275,14 @@ impl From<ContextFailurePolicyArg> for ContextFailurePolicy {
     }
 }
 
+type ContextCompileResolution = (
+    ContextCompileConfig,
+    Option<bool>,
+    Option<ContextFailurePolicy>,
+    Option<u64>,
+    Option<PathBuf>,
+);
+
 fn validate_lever_args(args: &LeverArgs) -> Result<(), DynError> {
     let loop_mode = resolve_loop_mode(args.loop_count);
     if args.next && args.task_id.is_some() {
@@ -285,16 +301,14 @@ fn resolve_context_compile_config(
     disable_flag: bool,
     policy: Option<ContextFailurePolicyArg>,
     token_budget: Option<u64>,
-) -> (
-    ContextCompileConfig,
-    Option<bool>,
-    Option<ContextFailurePolicy>,
-    Option<u64>,
-) {
+    assembly_path: Option<PathBuf>,
+    workspace: &Path,
+) -> Result<ContextCompileResolution, DynError> {
     let mut config = ContextCompileConfig::default();
     let mut override_flag = None;
     let mut policy_override = None;
     let mut token_budget_override = None;
+    let mut assembly_override = None;
     if enable_flag {
         config.enabled = true;
         override_flag = Some(true);
@@ -311,12 +325,18 @@ fn resolve_context_compile_config(
         config.token_budget = token_budget;
         token_budget_override = Some(token_budget);
     }
-    (
+    if let Some(assembly_path) = assembly_path {
+        let resolved = resolve_assembly_path(assembly_path, workspace)?;
+        config.assembly_path = resolved.clone();
+        assembly_override = Some(resolved);
+    }
+    Ok((
         config,
         override_flag,
         policy_override,
         token_budget_override,
-    )
+        assembly_override,
+    ))
 }
 
 fn main() -> Result<(), DynError> {
@@ -337,20 +357,9 @@ fn main() -> Result<(), DynError> {
         no_context_compile,
         context_failure_policy,
         context_token_budget,
+        assembly_path,
         command_path,
     } = args;
-
-    let (
-        context_compile,
-        context_compile_override,
-        context_failure_policy_override,
-        context_token_budget_override,
-    ) = resolve_context_compile_config(
-        context_compile,
-        no_context_compile,
-        context_failure_policy,
-        context_token_budget,
-    );
 
     let resolved = resolve_paths(workspace, tasks, prompt, command_path)?;
     let ResolvedPaths {
@@ -359,6 +368,24 @@ fn main() -> Result<(), DynError> {
         prompt_path,
         command_path,
     } = resolved;
+    let (
+        context_compile,
+        context_compile_override,
+        context_failure_policy_override,
+        context_token_budget_override,
+        context_assembly_override,
+    ) = resolve_context_compile_config(
+        context_compile,
+        no_context_compile,
+        context_failure_policy,
+        context_token_budget,
+        assembly_path,
+        &workspace,
+    )?;
+    if context_compile.enabled || context_assembly_override.is_some() {
+        lever::assembly_contract::validate_assembly_contract(&context_compile.assembly_path)
+            .map_err(|err| DynError::from(err.to_string()))?;
+    }
     let tasks = load_tasks(&tasks_path)?;
     let loop_mode = resolve_loop_mode(loop_count);
     let selecting_next = task_id.is_none() && matches!(loop_mode, LoopMode::Single);
@@ -412,6 +439,7 @@ fn main() -> Result<(), DynError> {
         context_compile_override,
         context_failure_policy_override,
         context_token_budget_override,
+        context_assembly_override,
     };
 
     if let Err(err) = run_iterations(&exec_config, loop_mode, delay_duration, &shutdown_flag) {
@@ -650,6 +678,20 @@ fn resolve_command_path(path: PathBuf, workspace: &Path) -> Result<PathBuf, DynE
     if path_str.contains('/') || path_str.contains('\\') {
         let anchored = workspace.join(&path);
         canonicalize_or_fallback(&anchored, &path)
+    } else {
+        Ok(path)
+    }
+}
+
+fn resolve_assembly_path(path: PathBuf, workspace: &Path) -> Result<PathBuf, DynError> {
+    let path_str = path.as_os_str().to_string_lossy();
+    if path.is_absolute() {
+        return canonicalize_existing_path(path);
+    }
+
+    if path_str.contains('/') || path_str.contains('\\') {
+        let anchored = workspace.join(&path);
+        canonicalize_existing_path(anchored)
     } else {
         Ok(path)
     }
@@ -1058,6 +1100,11 @@ impl ExecutionConfig {
         if let Some(token_budget) = self.context_token_budget_override {
             args.push("--context-token-budget".into());
             args.push(token_budget.to_string().into());
+        }
+
+        if let Some(assembly_path) = &self.context_assembly_override {
+            args.push("--assembly-path".into());
+            args.push(assembly_path.as_os_str().to_os_string());
         }
 
         args

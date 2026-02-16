@@ -45,6 +45,37 @@ exit 0
 EOF2
 chmod +x "$stub_dir/flag-stub"
 
+cat > "$stub_dir/assembly" <<'EOF2'
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "${1:-}" == "--version" ]]; then
+  printf '%s\n' "assembly 1.2.3"
+  exit 0
+fi
+
+if [[ "${1:-}" == "build" && "${2:-}" == "--help" ]]; then
+  cat <<'HELP'
+Usage: assembly build [OPTIONS]
+
+Options:
+  --repo <PATH>           Repository root
+  --task <PATH>           Task input file (supports @file)
+  --task-id <ID>          Task identifier
+  --out <DIR>             Output pack directory
+  --token-budget <TOKENS> Token budget for context
+  --exclude <GLOB>        Additive exclude glob (repeatable)
+  --exclude-runtime <GLOB> Runtime artifact exclusion glob (repeatable)
+  --summary-json <PATH>   Write machine-readable summary JSON
+HELP
+  exit 0
+fi
+
+echo "unexpected args: $*" >&2
+exit 1
+EOF2
+chmod +x "$stub_dir/assembly"
+
 (
   cd "$repo_root"
   cargo build --quiet
@@ -58,6 +89,7 @@ ARGS_FILE="$args_file" "$lever_bin" \
   --command-path "$stub_dir/flag-stub" \
   --task-id T1 \
   --context-compile \
+  --assembly-path "$stub_dir/assembly" \
   >/dev/null
 
 if ! grep -Fxq -- "--context-compile" "$args_file"; then

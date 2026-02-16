@@ -38,7 +38,7 @@ The `lever` binary is the canonical entry point. Run `lever` once to execute the
 - `--reset-task` clears attempt counters for the selected task before running.
 - `--delay` inserts a sleep between loop iterations (seconds, default 0; only valid with `--loop`).
 - `--next` selects the first task whose status is not `completed` and whose model is not `human`; it cannot be combined with `--task-id`.
-- `--context-compile` enables context compilation for each run and `--no-context-compile` disables it; `--context-failure-policy <best-effort|required>` selects how failures are handled (default: best-effort); `--context-token-budget <TOKENS>` sets the context compilation token budget (default: 8000).
+- `--context-compile` enables context compilation for each run and `--no-context-compile` disables it; `--context-failure-policy <best-effort|required>` selects how failures are handled (default: best-effort); `--context-token-budget <TOKENS>` sets the context compilation token budget (default: 8000); `--assembly-path <PATH>` overrides the Assembly executable used for context compilation (default: `assembly`).
 
 ### Loop semantics
 
