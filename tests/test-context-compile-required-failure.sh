@@ -18,14 +18,14 @@ cat > "$repo_dir/prd.json" <<'JSON'
   "tasks": [
     {
       "task_id": "T1",
-      "title": "Pack validation",
+      "title": "Required context compile failure",
       "status": "unstarted",
       "model": "gpt-5.1-codex-mini",
       "definition_of_done": [
-        "Validate pack files"
+        "Fail fast when context compilation fails"
       ],
       "recommended": {
-        "approach": "Stub assembly"
+        "approach": "Stub assembly to fail"
       }
     }
   ]
@@ -109,42 +109,8 @@ HELP
   exit 0
 fi
 
-out_dir=""
-summary=""
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --out)
-      out_dir="$2"
-      shift 2
-      ;;
-    --summary-json)
-      summary="$2"
-      shift 2
-      ;;
-    *)
-      shift 1
-      ;;
-  esac
-done
-
-if [[ -z "$out_dir" ]]; then
-  echo "Missing --out" >&2
-  exit 2
-fi
-
-mkdir -p "$out_dir"
-required=(manifest.json index.json context.md policy.md lint.json)
-for file in "${required[@]}"; do
-  if [[ -n "${MISSING_FILE:-}" && "$file" == "$MISSING_FILE" ]]; then
-    continue
-  fi
-  printf '%s\n' "data" > "$out_dir/$file"
-done
-
-if [[ -n "$summary" ]]; then
-  mkdir -p "$(dirname "$summary")"
-  printf '%s\n' "{}" > "$summary"
-fi
+echo "assembly build failed" >&2
+exit 3
 EOF2
 chmod +x "$stub_bin/assembly"
 
@@ -156,51 +122,11 @@ init_git_repo "$repo_dir"
 )
 lever_bin="$repo_root/target/debug/lever"
 
-for missing in "${required[@]}"; do
-  marker_file="$repo_dir/codex-required-${missing}.marker"
-  rm -f "$marker_file"
-  set +e
-  missing_output=$(PATH="$stub_bin:$PATH" \
-    MISSING_FILE="$missing" \
-    CODEX_MARKER="$marker_file" \
-    GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.com \
-    GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.com \
-    "$lever_bin" \
-    --workspace "$repo_dir" \
-    --tasks prd.json \
-    --task-id T1 \
-    --context-compile \
-    --context-failure-policy required \
-    2>&1)
-  missing_status=$?
-  set -e
-
-  if [[ $missing_status -eq 0 ]]; then
-    echo "Expected missing pack files to fail with required policy (missing $missing)" >&2
-    exit 1
-  fi
-
-  if [[ "$missing_output" != *"Missing required pack files"* ]]; then
-    echo "Expected missing pack files error, got: $missing_output" >&2
-    exit 1
-  fi
-
-  if [[ "$missing_output" != *"$missing"* ]]; then
-    echo "Expected missing pack files error to mention $missing, got: $missing_output" >&2
-    exit 1
-  fi
-
-  if [[ -f "$marker_file" ]]; then
-    echo "Expected required policy to fail before Codex execution (missing $missing)" >&2
-    exit 1
-  fi
-done
+marker_file="$repo_dir/codex-required.marker"
+rm -f "$marker_file"
 
 set +e
-marker_file="$repo_dir/codex-best-effort.marker"
-rm -f "$marker_file"
-warning_output=$(PATH="$stub_bin:$PATH" \
-  MISSING_FILE="policy.md" \
+run_output=$(PATH="$stub_bin:$PATH" \
   CODEX_MARKER="$marker_file" \
   GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.com \
   GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.com \
@@ -209,22 +135,27 @@ warning_output=$(PATH="$stub_bin:$PATH" \
   --tasks prd.json \
   --task-id T1 \
   --context-compile \
-  --context-failure-policy best-effort \
+  --context-failure-policy required \
   2>&1)
-warning_status=$?
+run_status=$?
 set -e
 
-if [[ $warning_status -ne 0 ]]; then
-  echo "Expected best-effort pack validation to continue" >&2
+if [[ $run_status -ne 13 ]]; then
+  echo "Expected required policy to exit 13 on assembly failure, got: $run_status" >&2
   exit 1
 fi
 
-if [[ "$warning_output" != *"Missing required pack files"* ]]; then
-  echo "Expected warning about missing pack files, got: $warning_output" >&2
+if [[ "$run_output" != *"Assembly failed"* ]]; then
+  echo "Expected required failure to mention assembly error, got: $run_output" >&2
   exit 1
 fi
 
-if [[ ! -f "$marker_file" ]]; then
-  echo "Expected best-effort policy to continue into Codex execution" >&2
+if [[ "$run_output" != *"Blocked:"* ]]; then
+  echo "Expected required failure to be reported as blocked, got: $run_output" >&2
+  exit 1
+fi
+
+if [[ -f "$marker_file" ]]; then
+  echo "Expected required policy to fail before Codex execution" >&2
   exit 1
 fi
