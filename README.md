@@ -92,6 +92,12 @@ lever --loop --tasks prd.json 2>&1 | tee .ralph/ralph.log | lnav -
 ./tests/run.sh
 ```
 
+`./tests/run.sh` now runs schema validation up front via the Rust validator binary. You can run schema validation directly with:
+
+```bash
+cargo run --quiet --bin validate_prd -- --tasks prd.json --schema prd.schema.json
+```
+
 ## Task schema guidance
 
 Tasks must conform to `prd.schema.json`. The schema requires the following metadata for every task entry:

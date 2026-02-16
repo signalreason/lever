@@ -9,7 +9,8 @@
 This repo is Rust-first with bash test harnesses. You need `bash`, `cargo`, `jq`, `git`, `python`, and the `codex` CLI available on `PATH` (see `README.md`).
 
 ## Build, Test, and Development Commands
-- `./tests/run.sh`: Runs every `tests/test-*.sh` script and reports failures.
+- `./tests/run.sh`: Validates `prd.json` against `prd.schema.json`, then runs every `tests/test-*.sh` script and reports failures.
+- `cargo run --quiet --bin validate_prd -- --tasks prd.json --schema prd.schema.json`: Validates task JSON against the schema.
 - `cargo run -- --loop --tasks prd.json --prompt prompts/autonomous-senior-engineer.prompt.md`: Drives a tasks file in a loop.
 - `cargo run -- --tasks prd.json --task-id ASM-001 --prompt prompts/autonomous-senior-engineer.prompt.md`: Runs a single task iteration.
 
