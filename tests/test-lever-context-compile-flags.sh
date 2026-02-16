@@ -117,6 +117,25 @@ if ! grep -Fxq -- "required" "$args_file"; then
   exit 1
 fi
 
+args_file="$args_dir/args-token-budget.txt"
+ARGS_FILE="$args_file" "$lever_bin" \
+  --workspace "$repo_dir" \
+  --tasks prd.json \
+  --command-path "$stub_dir/flag-stub" \
+  --task-id T1 \
+  --context-token-budget 12345 \
+  >/dev/null
+
+if ! grep -Fxq -- "--context-token-budget" "$args_file"; then
+  echo "Expected --context-token-budget to be passed to task agent" >&2
+  exit 1
+fi
+
+if ! grep -Fxq -- "12345" "$args_file"; then
+  echo "Expected token budget value to be passed to task agent" >&2
+  exit 1
+fi
+
 set +e
 conflict_output="$($lever_bin \
   --workspace "$repo_dir" \
@@ -157,5 +176,31 @@ fi
 
 if ! grep -q "possible values" <<<"$policy_output"; then
   echo "Expected invalid policy error to list possible values" >&2
+  exit 1
+fi
+
+set +e
+budget_output="$($lever_bin \
+  --workspace "$repo_dir" \
+  --tasks prd.json \
+  --command-path "$stub_dir/flag-stub" \
+  --task-id T1 \
+  --context-token-budget 0 \
+  2>&1)"
+budget_status=$?
+set -e
+
+if [[ $budget_status -eq 0 ]]; then
+  echo "Expected invalid token budget to fail" >&2
+  exit 1
+fi
+
+if ! grep -q "invalid value" <<<"$budget_output"; then
+  echo "Expected invalid token budget error to mention invalid value" >&2
+  exit 1
+fi
+
+if ! grep -q "context-token-budget" <<<"$budget_output"; then
+  echo "Expected invalid token budget error to mention --context-token-budget" >&2
   exit 1
 fi

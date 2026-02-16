@@ -49,6 +49,7 @@ struct ExecutionConfig {
     context_compile: ContextCompileConfig,
     context_compile_override: Option<bool>,
     context_failure_policy_override: Option<ContextFailurePolicy>,
+    context_token_budget_override: Option<u64>,
 }
 
 struct GitWorkspaceGuard {
@@ -233,6 +234,14 @@ struct LeverArgs {
     context_failure_policy: Option<ContextFailurePolicyArg>,
 
     #[arg(
+        long = "context-token-budget",
+        value_name = "TOKENS",
+        value_parser = value_parser!(u64).range(1..),
+        help = "Token budget for context compilation (must be >= 1)"
+    )]
+    context_token_budget: Option<u64>,
+
+    #[arg(
         long = "command-path",
         value_name = "PATH",
         default_value = DEFAULT_COMMAND_PATH,
@@ -275,14 +284,17 @@ fn resolve_context_compile_config(
     enable_flag: bool,
     disable_flag: bool,
     policy: Option<ContextFailurePolicyArg>,
+    token_budget: Option<u64>,
 ) -> (
     ContextCompileConfig,
     Option<bool>,
     Option<ContextFailurePolicy>,
+    Option<u64>,
 ) {
     let mut config = ContextCompileConfig::default();
     let mut override_flag = None;
     let mut policy_override = None;
+    let mut token_budget_override = None;
     if enable_flag {
         config.enabled = true;
         override_flag = Some(true);
@@ -295,7 +307,16 @@ fn resolve_context_compile_config(
         config.policy = resolved;
         policy_override = Some(resolved);
     }
-    (config, override_flag, policy_override)
+    if let Some(token_budget) = token_budget {
+        config.token_budget = token_budget;
+        token_budget_override = Some(token_budget);
+    }
+    (
+        config,
+        override_flag,
+        policy_override,
+        token_budget_override,
+    )
 }
 
 fn main() -> Result<(), DynError> {
@@ -315,11 +336,21 @@ fn main() -> Result<(), DynError> {
         context_compile,
         no_context_compile,
         context_failure_policy,
+        context_token_budget,
         command_path,
     } = args;
 
-    let (context_compile, context_compile_override, context_failure_policy_override) =
-        resolve_context_compile_config(context_compile, no_context_compile, context_failure_policy);
+    let (
+        context_compile,
+        context_compile_override,
+        context_failure_policy_override,
+        context_token_budget_override,
+    ) = resolve_context_compile_config(
+        context_compile,
+        no_context_compile,
+        context_failure_policy,
+        context_token_budget,
+    );
 
     let resolved = resolve_paths(workspace, tasks, prompt, command_path)?;
     let ResolvedPaths {
@@ -380,6 +411,7 @@ fn main() -> Result<(), DynError> {
         context_compile,
         context_compile_override,
         context_failure_policy_override,
+        context_token_budget_override,
     };
 
     if let Err(err) = run_iterations(&exec_config, loop_mode, delay_duration, &shutdown_flag) {
@@ -1021,6 +1053,11 @@ impl ExecutionConfig {
         if let Some(policy) = self.context_failure_policy_override {
             args.push("--context-failure-policy".into());
             args.push(context_failure_policy_arg(policy).into());
+        }
+
+        if let Some(token_budget) = self.context_token_budget_override {
+            args.push("--context-token-budget".into());
+            args.push(token_budget.to_string().into());
         }
 
         args

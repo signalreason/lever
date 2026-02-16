@@ -120,10 +120,16 @@
         "All linters pass, including cargo fmt --check and cargo clippy --all-targets -- -D warnings."
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260216T011239Z-3274 completed",
+        "last_run_id": "20260216T011239Z-3274",
+        "last_update_utc": "2026-02-16T01:15:57Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Test boundary values first, then implement parsing and propagation with strict validation errors for invalid input."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "CTX-005",
       "title": "Add CLI support for context token budget",
       "verification": {
