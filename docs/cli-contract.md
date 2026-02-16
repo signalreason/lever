@@ -31,6 +31,7 @@ Flags:
 | --- | --- | --- |
 | `--tasks <path>` | overrides the default tasks file. | resolved before the task agent executes. |
 | `--prompt <path>` | overrides the prompt file used for both loop logging and the task agent prompt. | forwarded via `--prompt`. |
+| `--prompt-lint-summary` | inject a concise lint summary from `pack/lint.json` into the prompt when available. | forwarded via `--prompt-lint-summary`. |
 | `--assignee <name>` | overrides the assignee label (used by external task agents). | not written to task metadata. |
 | `--command-path <path>` | identifies which binary to run for a task invocation. | `internal` selects the Rust task agent. |
 | `--assembly-path <path>` | overrides the Assembly executable for context compilation. | validated against `docs/assembly-contract.md`. |
@@ -65,6 +66,7 @@ The default run mirrors a single task-agent iteration. Flags are:
 | `--assignee <name>` | logging label for external task agents. | optional. |
 | `--workspace <path>` | ensures `git` commands and file paths run from this directory. | identical to loop mode. |
 | `--prompt <path>` | overrides the prompt file for the Codex run. | also used when building the per-run prompt. |
+| `--prompt-lint-summary` | inject a concise lint summary from `pack/lint.json` into the prompt when available. | requires a successful context compilation to produce `lint.json`. |
 | `--reset-task` | before running, reset the selected task’s status to `unstarted`, zero `observability.run_attempts`, and stamp `observability.last_run_id`. | helpful when re-running blocked tasks after manual fixes. |
 
 Before running Codex, the task agent must ensure:
@@ -83,7 +85,7 @@ Before running Codex, the task agent must ensure:
 
 ## Task agent run behavior
 
-- Create `.ralph/runs/<task_id>/<run_id>` and write the snapshot (`task.json`), assembly task input (`assembly-task.json`), prompt (`prompt.md`), and codex log (`codex.jsonl`). The prompt includes the base prompt file, the task title, every DoD bullet, the recommended approach, and the authoritative JSON.
+- Create `.ralph/runs/<task_id>/<run_id>` and write the snapshot (`task.json`), assembly task input (`assembly-task.json`), prompt (`prompt.md`), and codex log (`codex.jsonl`). The prompt includes the base prompt file, the task title, every DoD bullet, the recommended approach, the authoritative JSON, and (when enabled) a concise lint summary derived from `pack/lint.json`.
 - Maintain a rate-limit cache under `.ralph/rate_limit.json` using the default TPM/RPM caps per model.
 - Run `codex exec --yolo --model <model> --output-schema .ralph/task_result.schema.json --output-last-message <result> --json --skip-git-repo-check`, streaming logs to `<run>/codex.jsonl` and collecting tokens for rate tracking.
 - Interpret the `result.json` schema (`outcome`, `dod_met`, `tests`, `notes`, `blockers`). If the file is missing, exit `10` and mark the task `blocked`.

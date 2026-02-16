@@ -57,6 +57,7 @@ pub struct TaskAgentConfig {
     pub reset_task: bool,
     pub explicit_task_id: Option<String>,
     pub context_compile: ContextCompileConfig,
+    pub include_lint_summary: bool,
 }
 
 pub fn run_task_agent(
@@ -149,6 +150,7 @@ pub fn run_task_agent(
     fs::create_dir_all(&paths.run_dir_abs)?;
     fs::create_dir_all(&paths.pack_dir_abs)?;
     let mut compiled_context_path: Option<PathBuf> = None;
+    let mut lint_summary_path: Option<PathBuf> = None;
 
     fs::write(
         &paths.task_snapshot_path,
@@ -252,6 +254,9 @@ pub fn run_task_agent(
                     eprintln!("Warning: {}", note);
                 } else {
                     compiled_context_path = Some(paths.pack_dir_abs.join("context.md"));
+                    if config.include_lint_summary {
+                        lint_summary_path = Some(paths.pack_dir_abs.join("lint.json"));
+                    }
                 }
             }
             AssemblyOutcome::Interrupted => {
@@ -351,6 +356,7 @@ pub fn run_task_agent(
         dod: &selection.definition_of_done,
         recommended: &selection.recommended_approach,
         task_snapshot: &paths.task_snapshot_path,
+        lint_summary: lint_summary_path.as_deref(),
         compiled_context: compiled_context_path.as_deref(),
     })?;
 
@@ -906,6 +912,7 @@ struct PromptBuildInput<'a> {
     dod: &'a [String],
     recommended: &'a str,
     task_snapshot: &'a Path,
+    lint_summary: Option<&'a Path>,
     compiled_context: Option<&'a Path>,
 }
 
@@ -925,9 +932,240 @@ fn build_prompt(input: PromptBuildInput<'_>) -> Result<(), DynError> {
     if !prompt.ends_with('\n') {
         prompt.push('\n');
     }
+    append_lint_summary(&mut prompt, input.lint_summary, input.workspace)?;
     append_compiled_context(&mut prompt, input.compiled_context, input.workspace)?;
     fs::write(input.prompt_path, prompt)?;
     Ok(())
+}
+
+struct LintIssue {
+    severity: String,
+    message: String,
+    path: Option<String>,
+    line: Option<u64>,
+    column: Option<u64>,
+    rule: Option<String>,
+}
+
+fn append_lint_summary(
+    prompt: &mut String,
+    lint_path: Option<&Path>,
+    workspace: &Path,
+) -> Result<(), DynError> {
+    let Some(path) = lint_path else {
+        return Ok(());
+    };
+    if !path.is_file() {
+        return Ok(());
+    }
+    let raw = match fs::read_to_string(path) {
+        Ok(raw) => raw,
+        Err(_) => return Ok(()),
+    };
+    let value: Value = match serde_json::from_str(&raw) {
+        Ok(value) => value,
+        Err(_) => return Ok(()),
+    };
+    let mut issues = parse_lint_issues(&value);
+    if issues.is_empty() {
+        prompt.push_str("\nLint summary:\nNo lint findings.\n");
+        return Ok(());
+    }
+
+    issues.sort_by(|a, b| lint_issue_sort_key(a).cmp(&lint_issue_sort_key(b)));
+    let (error_count, warning_count, note_count, info_count, other_count) =
+        lint_issue_counts(&issues);
+    let total = issues.len();
+    let show = total.min(5);
+
+    prompt.push_str("\nLint summary:\n");
+    prompt.push_str(&format!(
+        "Totals: error={} warning={} note={} info={} other={}\n",
+        error_count, warning_count, note_count, info_count, other_count
+    ));
+    prompt.push_str(&format!("Findings (showing {} of {}):\n", show, total));
+    for issue in issues.iter().take(show) {
+        prompt.push_str(&format!("- {}\n", format_lint_issue(issue, workspace)));
+    }
+    Ok(())
+}
+
+fn parse_lint_issues(value: &Value) -> Vec<LintIssue> {
+    let entries = lint_issue_entries(value);
+    let mut issues = Vec::new();
+    for entry in entries {
+        let Value::Object(map) = entry else {
+            continue;
+        };
+        let severity = map
+            .get("severity")
+            .or_else(|| map.get("level"))
+            .or_else(|| map.get("kind"))
+            .and_then(Value::as_str)
+            .unwrap_or("info")
+            .trim()
+            .to_lowercase();
+        let message = map
+            .get("message")
+            .or_else(|| map.get("text"))
+            .or_else(|| map.get("description"))
+            .or_else(|| map.get("summary"))
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        let rule = map
+            .get("rule")
+            .or_else(|| map.get("rule_id"))
+            .or_else(|| map.get("code"))
+            .or_else(|| map.get("id"))
+            .and_then(Value::as_str)
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        let path = map
+            .get("path")
+            .or_else(|| map.get("file"))
+            .or_else(|| map.get("filename"))
+            .and_then(Value::as_str)
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        let line = map
+            .get("line")
+            .or_else(|| map.get("line_start"))
+            .and_then(Value::as_u64);
+        let column = map
+            .get("column")
+            .or_else(|| map.get("col"))
+            .and_then(Value::as_u64);
+
+        if message.is_empty() && rule.is_none() && path.is_none() {
+            continue;
+        }
+
+        issues.push(LintIssue {
+            severity,
+            message,
+            path,
+            line,
+            column,
+            rule,
+        });
+    }
+    issues
+}
+
+fn lint_issue_entries(value: &Value) -> Vec<&Value> {
+    match value {
+        Value::Array(items) => items.iter().collect(),
+        Value::Object(map) => {
+            for key in ["issues", "findings", "diagnostics", "results", "items"] {
+                if let Some(Value::Array(items)) = map.get(key) {
+                    return items.iter().collect();
+                }
+            }
+            Vec::new()
+        }
+        _ => Vec::new(),
+    }
+}
+
+fn lint_issue_counts(issues: &[LintIssue]) -> (usize, usize, usize, usize, usize) {
+    let mut error_count = 0;
+    let mut warning_count = 0;
+    let mut note_count = 0;
+    let mut info_count = 0;
+    let mut other_count = 0;
+    for issue in issues {
+        match severity_bucket(&issue.severity) {
+            "error" => error_count += 1,
+            "warning" => warning_count += 1,
+            "note" => note_count += 1,
+            "info" => info_count += 1,
+            _ => other_count += 1,
+        }
+    }
+    (
+        error_count,
+        warning_count,
+        note_count,
+        info_count,
+        other_count,
+    )
+}
+
+fn lint_issue_sort_key(issue: &LintIssue) -> (u8, &str, u64, u64, &str, &str) {
+    let rank = severity_rank(&issue.severity);
+    let path = issue.path.as_deref().unwrap_or("");
+    let line = issue.line.unwrap_or(u64::MAX);
+    let column = issue.column.unwrap_or(u64::MAX);
+    let rule = issue.rule.as_deref().unwrap_or("");
+    let message = issue.message.as_str();
+    (rank, path, line, column, rule, message)
+}
+
+fn format_lint_issue(issue: &LintIssue, workspace: &Path) -> String {
+    let severity = severity_bucket(&issue.severity);
+    let mut line = format!("[{}]", severity);
+    if let Some(path) = issue.path.as_deref() {
+        let display_path = display_issue_path(path, workspace);
+        let mut location = display_path;
+        if let Some(line_no) = issue.line {
+            location.push(':');
+            location.push_str(&line_no.to_string());
+            if let Some(col) = issue.column {
+                location.push(':');
+                location.push_str(&col.to_string());
+            }
+        }
+        line.push(' ');
+        line.push_str(&location);
+    }
+    if let Some(rule) = issue.rule.as_deref() {
+        if !rule.is_empty() {
+            line.push(' ');
+            line.push_str(rule);
+        }
+    }
+    if !issue.message.is_empty() {
+        let message = compact_text(&issue.message, 160);
+        if !line.ends_with(' ') {
+            line.push(' ');
+        }
+        line.push_str("- ");
+        line.push_str(&message);
+    }
+    line
+}
+
+fn display_issue_path(path: &str, workspace: &Path) -> String {
+    let candidate = Path::new(path);
+    if candidate.is_absolute() {
+        display_workspace_path(candidate, workspace)
+    } else {
+        path.to_string()
+    }
+}
+
+fn severity_bucket(severity: &str) -> &'static str {
+    match severity {
+        "error" | "err" => "error",
+        "warning" | "warn" => "warning",
+        "note" => "note",
+        "info" | "information" => "info",
+        "hint" => "hint",
+        _ => "other",
+    }
+}
+
+fn severity_rank(severity: &str) -> u8 {
+    match severity_bucket(severity) {
+        "error" => 0,
+        "warning" => 1,
+        "note" => 2,
+        "info" => 3,
+        "hint" => 4,
+        _ => 5,
+    }
 }
 
 fn append_compiled_context(

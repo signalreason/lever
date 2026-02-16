@@ -168,6 +168,20 @@ if ! grep -Fxq -- "12345" "$args_file"; then
   exit 1
 fi
 
+args_file="$args_dir/args-lint-summary.txt"
+ARGS_FILE="$args_file" "$lever_bin" \
+  --workspace "$repo_dir" \
+  --tasks prd.json \
+  --command-path "$stub_dir/flag-stub" \
+  --task-id T1 \
+  --prompt-lint-summary \
+  >/dev/null
+
+if ! grep -Fxq -- "--prompt-lint-summary" "$args_file"; then
+  echo "Expected --prompt-lint-summary to be passed to task agent" >&2
+  exit 1
+fi
+
 set +e
 conflict_output="$($lever_bin \
   --workspace "$repo_dir" \

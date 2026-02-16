@@ -456,10 +456,16 @@
         "All linters pass, including cargo fmt --check and cargo clippy --all-targets -- -D warnings."
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260216T022203Z-3274 completed",
+        "last_run_id": "20260216T022203Z-3274",
+        "last_update_utc": "2026-02-16T02:31:57Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Add tests for enabled and disabled modes first, then parse lint.json defensively and inject only concise, deterministic output."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "CTX-017",
       "title": "Add optional prompt injection for a concise lint summary",
       "verification": {

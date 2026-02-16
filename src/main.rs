@@ -47,6 +47,7 @@ struct ExecutionConfig {
     workspace: PathBuf,
     assignee: Option<String>,
     reset_task: bool,
+    prompt_lint_summary: bool,
     context_compile: ContextCompileConfig,
     context_compile_override: Option<bool>,
     context_failure_policy_override: Option<ContextFailurePolicy>,
@@ -251,6 +252,12 @@ struct LeverArgs {
     assembly_path: Option<PathBuf>,
 
     #[arg(
+        long = "prompt-lint-summary",
+        help = "Include a concise lint summary from pack/lint.json in the prompt when available"
+    )]
+    prompt_lint_summary: bool,
+
+    #[arg(
         long = "command-path",
         value_name = "PATH",
         default_value = DEFAULT_COMMAND_PATH,
@@ -359,6 +366,7 @@ fn main() -> Result<(), DynError> {
         context_failure_policy,
         context_token_budget,
         assembly_path,
+        prompt_lint_summary,
         command_path,
     } = args;
 
@@ -436,6 +444,7 @@ fn main() -> Result<(), DynError> {
         workspace: workspace.clone(),
         assignee,
         reset_task,
+        prompt_lint_summary,
         context_compile,
         context_compile_override,
         context_failure_policy_override,
@@ -992,6 +1001,7 @@ fn run_once(
             reset_task: config.reset_task,
             explicit_task_id: config.explicit_task_id.clone(),
             context_compile: config.context_compile.clone(),
+            include_lint_summary: config.prompt_lint_summary,
         };
         let exit_code = task_agent::run_task_agent(
             &agent_config,
@@ -1083,6 +1093,10 @@ impl ExecutionConfig {
 
         if self.reset_task {
             args.push("--reset-task".into());
+        }
+
+        if self.prompt_lint_summary {
+            args.push("--prompt-lint-summary".into());
         }
 
         let enabled = self
@@ -1522,6 +1536,7 @@ mod tests {
             workspace: PathBuf::from("."),
             assignee: None,
             reset_task: false,
+            prompt_lint_summary: false,
             context_compile,
             context_compile_override: None,
             context_failure_policy_override: None,
@@ -1557,6 +1572,7 @@ mod tests {
             workspace: PathBuf::from("."),
             assignee: None,
             reset_task: false,
+            prompt_lint_summary: false,
             context_compile,
             context_compile_override: None,
             context_failure_policy_override: None,
