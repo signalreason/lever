@@ -247,6 +247,7 @@ pub fn run_task_agent(
                             format!("missing={}", err.missing.join(", ")),
                         ],
                     );
+                    warn_context_compile_failure(&selection.task_id, &run_id);
                     eprintln!("Warning: {}", note);
                 }
             }
@@ -309,6 +310,7 @@ pub fn run_task_agent(
                         format!("stderr={}", paths.assembly_stderr_path.display()),
                     ],
                 );
+                warn_context_compile_failure(&selection.task_id, &run_id);
                 eprintln!("Warning: {}", note);
             }
         }
@@ -1324,6 +1326,17 @@ fn log_line(level: &str, message: &str, kv: &[String]) {
     }
     let prefer_stdout = !(level == "ERROR" || level == "WARN");
     print_line(prefer_stdout, &line);
+}
+
+fn warn_context_compile_failure(task_id: &str, run_id: &str) {
+    log_line(
+        "WARN",
+        "Context compilation failed (best-effort); continuing without compiled context.",
+        &[format!("task_id={}", task_id), format!("run_id={}", run_id)],
+    );
+    eprintln!(
+        "Warning: Context compilation failed (best-effort); continuing without compiled context."
+    );
 }
 
 fn print_line(prefer_stdout: bool, line: &str) {
