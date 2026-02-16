@@ -1084,28 +1084,33 @@ impl ExecutionConfig {
             args.push("--reset-task".into());
         }
 
-        if let Some(enabled) = self.context_compile_override {
-            if enabled {
-                args.push("--context-compile".into());
-            } else {
-                args.push("--no-context-compile".into());
-            }
+        let enabled = self
+            .context_compile_override
+            .unwrap_or(self.context_compile.enabled);
+        if enabled {
+            args.push("--context-compile".into());
+        } else {
+            args.push("--no-context-compile".into());
         }
 
-        if let Some(policy) = self.context_failure_policy_override {
-            args.push("--context-failure-policy".into());
-            args.push(context_failure_policy_arg(policy).into());
-        }
+        let policy = self
+            .context_failure_policy_override
+            .unwrap_or(self.context_compile.policy);
+        args.push("--context-failure-policy".into());
+        args.push(context_failure_policy_arg(policy).into());
 
-        if let Some(token_budget) = self.context_token_budget_override {
-            args.push("--context-token-budget".into());
-            args.push(token_budget.to_string().into());
-        }
+        let token_budget = self
+            .context_token_budget_override
+            .unwrap_or(self.context_compile.token_budget);
+        args.push("--context-token-budget".into());
+        args.push(token_budget.to_string().into());
 
-        if let Some(assembly_path) = &self.context_assembly_override {
-            args.push("--assembly-path".into());
-            args.push(assembly_path.as_os_str().to_os_string());
-        }
+        let assembly_path = self
+            .context_assembly_override
+            .as_ref()
+            .unwrap_or(&self.context_compile.assembly_path);
+        args.push("--assembly-path".into());
+        args.push(assembly_path.as_os_str().to_os_string());
 
         args
     }
@@ -1421,6 +1426,22 @@ fn utc_timestamp() -> Result<String, DynError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ffi::OsString;
+
+    fn args_to_strings(args: Vec<OsString>) -> Vec<String> {
+        args.into_iter()
+            .map(|arg| arg.to_string_lossy().to_string())
+            .collect()
+    }
+
+    fn assert_contains(args: &[String], expected: &str) {
+        assert!(
+            args.iter().any(|arg| arg == expected),
+            "Expected arg '{}' to be present. args={:?}",
+            expected,
+            args
+        );
+    }
 
     fn task(task_id: &str, status: Option<&str>, model: Option<&str>) -> TaskRecord {
         TaskRecord {
@@ -1480,5 +1501,75 @@ mod tests {
             let err = StopReasonError { reason };
             assert_eq!(err.exit_code(), 1);
         }
+    }
+
+    #[test]
+    fn task_agent_args_include_context_compile_config_enabled() {
+        let context_compile = ContextCompileConfig {
+            enabled: true,
+            policy: ContextFailurePolicy::Required,
+            token_budget: 12345,
+            assembly_path: PathBuf::from("/opt/assembly"),
+            ..Default::default()
+        };
+
+        let config = ExecutionConfig {
+            command_path: PathBuf::from("internal"),
+            tasks_path: PathBuf::from("tasks.json"),
+            prompt: PathBuf::from("prompt.md"),
+            explicit_task_id: Some("T1".to_string()),
+            workspace: PathBuf::from("."),
+            assignee: None,
+            reset_task: false,
+            context_compile,
+            context_compile_override: None,
+            context_failure_policy_override: None,
+            context_token_budget_override: None,
+            context_assembly_override: None,
+        };
+
+        let args = args_to_strings(config.task_agent_args(None, false, Path::new("prompt.md")));
+        assert_contains(&args, "--context-compile");
+        assert_contains(&args, "--context-failure-policy");
+        assert_contains(&args, "required");
+        assert_contains(&args, "--context-token-budget");
+        assert_contains(&args, "12345");
+        assert_contains(&args, "--assembly-path");
+        assert_contains(&args, "/opt/assembly");
+    }
+
+    #[test]
+    fn task_agent_args_include_context_compile_config_disabled() {
+        let context_compile = ContextCompileConfig {
+            enabled: false,
+            policy: ContextFailurePolicy::BestEffort,
+            token_budget: 9001,
+            assembly_path: PathBuf::from("/usr/local/bin/assembly"),
+            ..Default::default()
+        };
+
+        let config = ExecutionConfig {
+            command_path: PathBuf::from("internal"),
+            tasks_path: PathBuf::from("tasks.json"),
+            prompt: PathBuf::from("prompt.md"),
+            explicit_task_id: Some("T1".to_string()),
+            workspace: PathBuf::from("."),
+            assignee: None,
+            reset_task: false,
+            context_compile,
+            context_compile_override: None,
+            context_failure_policy_override: None,
+            context_token_budget_override: None,
+            context_assembly_override: None,
+        };
+
+        let args = args_to_strings(config.task_agent_args(None, false, Path::new("prompt.md")));
+        assert_contains(&args, "--no-context-compile");
+        assert_contains(&args, "--context-failure-policy");
+        assert_contains(&args, "best-effort");
+        assert_contains(&args, "--context-token-budget");
+        assert_contains(&args, "9001");
+        assert_contains(&args, "--assembly-path");
+        assert_contains(&args, "/usr/local/bin/assembly");
     }
 }
