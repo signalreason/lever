@@ -596,10 +596,16 @@
         "All linters pass, including cargo fmt --check and cargo clippy --all-targets -- -D warnings."
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260216T024957Z-3274 completed",
+        "last_run_id": "20260216T024957Z-3274",
+        "last_update_utc": "2026-02-16T02:54:19Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Use a stub Assembly command that omits specific pack files, assert required-mode failure, then implement strict pack validation."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "CTX-022",
       "title": "Add integration test for missing required pack files in required mode",
       "verification": {
