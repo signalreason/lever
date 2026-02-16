@@ -14,6 +14,8 @@ pub struct RunPaths {
     pub task_snapshot_path: PathBuf,
     pub assembly_task_path: PathBuf,
     pub assembly_summary_path: PathBuf,
+    pub assembly_stdout_path: PathBuf,
+    pub assembly_stderr_path: PathBuf,
 }
 
 pub fn run_paths(workspace: &Path, task_id: &str, run_id: &str) -> RunPaths {
@@ -32,6 +34,8 @@ pub fn run_paths(workspace: &Path, task_id: &str, run_id: &str) -> RunPaths {
     let task_snapshot_path = run_dir_abs.join("task.json");
     let assembly_task_path = run_dir_abs.join("assembly-task.json");
     let assembly_summary_path = run_dir_abs.join("assembly-summary.json");
+    let assembly_stdout_path = run_dir_abs.join("assembly.stdout.log");
+    let assembly_stderr_path = run_dir_abs.join("assembly.stderr.log");
 
     RunPaths {
         run_dir_rel,
@@ -46,6 +50,8 @@ pub fn run_paths(workspace: &Path, task_id: &str, run_id: &str) -> RunPaths {
         task_snapshot_path,
         assembly_task_path,
         assembly_summary_path,
+        assembly_stdout_path,
+        assembly_stderr_path,
     }
 }
 
@@ -93,6 +99,14 @@ mod tests {
         assert_eq!(
             paths.assembly_summary_path,
             PathBuf::from("workspace/.ralph/runs/TASK-1/run-123/assembly-summary.json")
+        );
+        assert_eq!(
+            paths.assembly_stdout_path,
+            PathBuf::from("workspace/.ralph/runs/TASK-1/run-123/assembly.stdout.log")
+        );
+        assert_eq!(
+            paths.assembly_stderr_path,
+            PathBuf::from("workspace/.ralph/runs/TASK-1/run-123/assembly.stderr.log")
         );
     }
 }

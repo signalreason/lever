@@ -16,7 +16,7 @@ use std::{
 
 use serde_json::{json, Map, Value};
 
-use lever::context_compile::ContextCompileConfig;
+use lever::context_compile::{ContextCompileConfig, ContextFailurePolicy};
 
 use crate::rate_limit;
 use crate::run_paths::run_paths;
@@ -28,6 +28,7 @@ const MAX_RUN_ATTEMPTS: u64 = 3;
 const RATE_LIMIT_FILE: &str = ".ralph/rate_limit.json";
 const RATE_LIMIT_WINDOW_SECONDS: u64 = 60;
 const SCHEMA_PATH: &str = ".ralph/task_result.schema.json";
+const ASSEMBLY_REQUIRED_FAILURE_EXIT_CODE: i32 = 13;
 
 pub struct TaskAgentConfig {
     pub tasks_path: PathBuf,
@@ -139,14 +140,110 @@ pub fn run_task_agent(
         format!("{}\n", assembly_task_json),
     )?;
     if config.context_compile.enabled {
-        let _assembly_args = build_assembly_command_args(
+        if is_shutdown(shutdown_flag) {
+            return handle_interrupt(
+                &config.tasks_path,
+                &config.workspace,
+                &selection.task_id,
+                &selection.title,
+                &run_id,
+                run_attempt,
+            );
+        }
+
+        let assembly_outcome = match run_assembly(
             &config.workspace,
             &selection.task_id,
-            &paths.assembly_task_path,
-            &paths.pack_dir_abs,
-            &paths.assembly_summary_path,
+            &paths,
             &config.context_compile,
-        );
+            shutdown_flag,
+        ) {
+            Ok(outcome) => outcome,
+            Err(err) => AssemblyOutcome::Failed {
+                code: None,
+                message: format!(
+                    "Failed to run assembly {}: {}",
+                    config.context_compile.assembly_path.display(),
+                    err
+                ),
+            },
+        };
+
+        match assembly_outcome {
+            AssemblyOutcome::Success => {
+                log_line(
+                    "INFO",
+                    "Assembly build succeeded",
+                    &[
+                        format!("task_id={}", selection.task_id),
+                        format!("run_id={}", run_id),
+                        format!("stdout={}", paths.assembly_stdout_path.display()),
+                        format!("stderr={}", paths.assembly_stderr_path.display()),
+                    ],
+                );
+            }
+            AssemblyOutcome::Interrupted => {
+                return handle_interrupt(
+                    &config.tasks_path,
+                    &config.workspace,
+                    &selection.task_id,
+                    &selection.title,
+                    &run_id,
+                    run_attempt,
+                );
+            }
+            AssemblyOutcome::Failed { code, message } => {
+                let exit_detail = match code {
+                    Some(value) => format!("exit={}", value),
+                    None => "exit=signal".to_string(),
+                };
+                let note = format!(
+                    "Assembly failed ({}) for run {}. {} See stdout={} stderr={}",
+                    exit_detail.as_str(),
+                    run_id,
+                    message,
+                    paths.assembly_stdout_path.display(),
+                    paths.assembly_stderr_path.display()
+                );
+                if config.context_compile.policy == ContextFailurePolicy::Required {
+                    increment_attempt_count(&config.tasks_path, &selection.task_id)?;
+                    update_task_status(
+                        &config.tasks_path,
+                        &selection.task_id,
+                        "blocked",
+                        &run_id,
+                        &note,
+                    )?;
+                    git_commit_progress(&config.workspace, &selection.title, &selection.task_id)?;
+                    log_line(
+                        "ERROR",
+                        "Assembly build failed",
+                        &[
+                            format!("task_id={}", selection.task_id),
+                            format!("run_id={}", run_id),
+                            exit_detail.clone(),
+                            format!("stdout={}", paths.assembly_stdout_path.display()),
+                            format!("stderr={}", paths.assembly_stderr_path.display()),
+                        ],
+                    );
+                    eprintln!("Blocked: {}", note);
+                    return Ok(ASSEMBLY_REQUIRED_FAILURE_EXIT_CODE);
+                }
+
+                log_line(
+                    "WARN",
+                    "Assembly build failed (best-effort)",
+                    &[
+                        format!("task_id={}", selection.task_id),
+                        format!("run_id={}", run_id),
+                        exit_detail.clone(),
+                        format!("stdout={}", paths.assembly_stdout_path.display()),
+                        format!("stderr={}", paths.assembly_stderr_path.display()),
+                    ],
+                );
+                eprintln!("Warning: {}", note);
+            }
+        }
     }
 
     ensure_schema_file(&config.workspace)?;
@@ -888,6 +985,62 @@ fn run_codex(
 
         match child.try_wait()? {
             Some(status) => return Ok(status.code().unwrap_or(1)),
+            None => thread::sleep(Duration::from_millis(100)),
+        }
+    }
+}
+
+enum AssemblyOutcome {
+    Success,
+    Failed { code: Option<i32>, message: String },
+    Interrupted,
+}
+
+fn run_assembly(
+    workspace: &Path,
+    task_id: &str,
+    paths: &crate::run_paths::RunPaths,
+    config: &ContextCompileConfig,
+    shutdown_flag: Option<&AtomicBool>,
+) -> Result<AssemblyOutcome, DynError> {
+    let args = build_assembly_command_args(
+        workspace,
+        task_id,
+        &paths.assembly_task_path,
+        &paths.pack_dir_abs,
+        &paths.assembly_summary_path,
+        config,
+    );
+
+    let stdout_file = File::create(&paths.assembly_stdout_path)?;
+    let stderr_file = File::create(&paths.assembly_stderr_path)?;
+
+    let mut child = Command::new(&config.assembly_path)
+        .current_dir(workspace)
+        .args(args)
+        .stdout(stdout_file)
+        .stderr(stderr_file)
+        .spawn()?;
+
+    loop {
+        if let Some(flag) = shutdown_flag {
+            if flag.load(Ordering::SeqCst) {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Ok(AssemblyOutcome::Interrupted);
+            }
+        }
+
+        match child.try_wait()? {
+            Some(status) => {
+                if status.success() {
+                    return Ok(AssemblyOutcome::Success);
+                }
+                return Ok(AssemblyOutcome::Failed {
+                    code: status.code(),
+                    message: "Assembly exited with non-zero status".to_string(),
+                });
+            }
             None => thread::sleep(Duration::from_millis(100)),
         }
     }

@@ -57,6 +57,7 @@ The `lever` binary is the canonical entry point. Run `lever` once to execute the
 - `10`: Task agent blocked because no `result.json` was produced.
 - `11`: Task agent blocked (attempt limit reached before run).
 - `12`: Task agent recorded progress (run completed without deterministic success).
+- `13`: Task agent blocked because Assembly context compilation failed with `--context-failure-policy required`.
 - `130`: Interrupted (SIGINT/CTRL-C).
 
 ### Examples
@@ -86,6 +87,8 @@ To keep a copy while watching:
 ```bash
 lever --loop --tasks prd.json 2>&1 | tee .ralph/ralph.log | lnav -
 ```
+
+When context compilation is enabled, Assembly stdout/stderr are captured under each run directory as `assembly.stdout.log` and `assembly.stderr.log`.
 
 ## Tests
 
