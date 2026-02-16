@@ -64,10 +64,16 @@
         "All linters pass, including cargo fmt --check and cargo clippy --all-targets -- -D warnings."
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260216T010227Z-3274 completed",
+        "last_run_id": "20260216T010227Z-3274",
+        "last_update_utc": "2026-02-16T01:08:23Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Add parsing and validation coverage first, then implement flag wiring into the new context compile config."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "CTX-003",
       "title": "Add CLI support to enable or disable context compilation",
       "verification": {

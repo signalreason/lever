@@ -17,6 +17,7 @@ use crate::task_metadata::{
     validate_task_metadata as validate_task_metadata_raw, TaskMetadataError,
 };
 use clap::{value_parser, Parser};
+use lever::context_compile::ContextCompileConfig;
 use serde_json::Value;
 
 mod rate_limit;
@@ -45,6 +46,8 @@ struct ExecutionConfig {
     workspace: PathBuf,
     assignee: Option<String>,
     reset_task: bool,
+    context_compile: ContextCompileConfig,
+    context_compile_override: Option<bool>,
 }
 
 struct GitWorkspaceGuard {
@@ -207,6 +210,20 @@ struct LeverArgs {
     delay: Option<u64>,
 
     #[arg(
+        long = "context-compile",
+        conflicts_with = "no_context_compile",
+        help = "Enable context compilation for each run"
+    )]
+    context_compile: bool,
+
+    #[arg(
+        long = "no-context-compile",
+        conflicts_with = "context_compile",
+        help = "Disable context compilation for each run"
+    )]
+    no_context_compile: bool,
+
+    #[arg(
         long = "command-path",
         value_name = "PATH",
         default_value = DEFAULT_COMMAND_PATH,
@@ -228,6 +245,22 @@ fn validate_lever_args(args: &LeverArgs) -> Result<(), DynError> {
     }
 }
 
+fn resolve_context_compile_config(
+    enable_flag: bool,
+    disable_flag: bool,
+) -> (ContextCompileConfig, Option<bool>) {
+    let mut config = ContextCompileConfig::default();
+    let mut override_flag = None;
+    if enable_flag {
+        config.enabled = true;
+        override_flag = Some(true);
+    } else if disable_flag {
+        config.enabled = false;
+        override_flag = Some(false);
+    }
+    (config, override_flag)
+}
+
 fn main() -> Result<(), DynError> {
     let args = LeverArgs::parse();
     validate_lever_args(&args)?;
@@ -242,8 +275,13 @@ fn main() -> Result<(), DynError> {
         loop_count,
         reset_task,
         delay,
+        context_compile,
+        no_context_compile,
         command_path,
     } = args;
+
+    let (context_compile, context_compile_override) =
+        resolve_context_compile_config(context_compile, no_context_compile);
 
     let resolved = resolve_paths(workspace, tasks, prompt, command_path)?;
     let ResolvedPaths {
@@ -301,6 +339,8 @@ fn main() -> Result<(), DynError> {
         workspace: workspace.clone(),
         assignee,
         reset_task,
+        context_compile,
+        context_compile_override,
     };
 
     if let Err(err) = run_iterations(&exec_config, loop_mode, delay_duration, &shutdown_flag) {
@@ -837,6 +877,7 @@ fn run_once(
             workspace: config.workspace.clone(),
             reset_task: config.reset_task,
             explicit_task_id: config.explicit_task_id.clone(),
+            context_compile: config.context_compile.clone(),
         };
         let exit_code = task_agent::run_task_agent(
             &agent_config,
@@ -928,6 +969,14 @@ impl ExecutionConfig {
 
         if self.reset_task {
             args.push("--reset-task".into());
+        }
+
+        if let Some(enabled) = self.context_compile_override {
+            if enabled {
+                args.push("--context-compile".into());
+            } else {
+                args.push("--no-context-compile".into());
+            }
         }
 
         args

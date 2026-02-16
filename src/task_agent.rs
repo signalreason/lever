@@ -15,6 +15,8 @@ use std::{
 
 use serde_json::{Map, Value};
 
+use lever::context_compile::ContextCompileConfig;
+
 use crate::rate_limit;
 use crate::task_metadata::validate_task_metadata;
 
@@ -31,6 +33,7 @@ pub struct TaskAgentConfig {
     pub workspace: PathBuf,
     pub reset_task: bool,
     pub explicit_task_id: Option<String>,
+    pub context_compile: ContextCompileConfig,
 }
 
 pub fn run_task_agent(
@@ -40,6 +43,7 @@ pub fn run_task_agent(
     shutdown_flag: Option<&AtomicBool>,
 ) -> Result<i32, DynError> {
     let requested_task_id = task_id_override.or(config.explicit_task_id.as_deref());
+    let _ = config.context_compile.enabled;
     if requested_task_id.is_none() && !allow_next {
         return Err("Task agent requires --task-id or --next".to_string().into());
     }
