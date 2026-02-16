@@ -5,6 +5,7 @@ TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=helpers.sh
 source "$TEST_DIR/helpers.sh"
 
+require_cmd jq
 require_cmd git
 require_cmd cargo
 
@@ -155,7 +156,71 @@ if [[ "$run_output" != *"Blocked:"* ]]; then
   exit 1
 fi
 
+if [[ "$run_output" != *"Context compile report"* ]]; then
+  echo "Expected context compile report log, got: $run_output" >&2
+  exit 1
+fi
+
 if [[ -f "$marker_file" ]]; then
   echo "Expected required policy to fail before Codex execution" >&2
+  exit 1
+fi
+
+run_dir="$(find "$repo_dir/.ralph/runs/T1" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+if [[ -z "$run_dir" ]]; then
+  echo "Expected run directory to exist" >&2
+  exit 1
+fi
+
+pack_rel="${run_dir#"$repo_dir"/}/pack"
+note="$(jq -r '.tasks[0].observability.last_note // ""' "$repo_dir/prd.json")"
+if [[ "$note" != *"context_compile=failed"* ]]; then
+  echo "Expected last_note to include context compile status, got: $note" >&2
+  exit 1
+fi
+
+if [[ "$note" != *"policy=required"* ]]; then
+  echo "Expected last_note to include policy, got: $note" >&2
+  exit 1
+fi
+
+if [[ "$note" != *"policy_outcome=blocked"* ]]; then
+  echo "Expected last_note to include policy outcome, got: $note" >&2
+  exit 1
+fi
+
+if [[ "$note" != *"pack_dir=$pack_rel"* ]]; then
+  echo "Expected last_note to include pack_dir, got: $note" >&2
+  exit 1
+fi
+
+compile_report="$run_dir/context-compile.json"
+if [[ ! -f "$compile_report" ]]; then
+  echo "Expected context compile report at $compile_report" >&2
+  exit 1
+fi
+
+status="$(jq -r '.status' "$compile_report")"
+policy="$(jq -r '.policy' "$compile_report")"
+policy_outcome="$(jq -r '.policy_outcome' "$compile_report")"
+pack_dir="$(jq -r '.pack_dir' "$compile_report")"
+
+if [[ "$status" != "failed" ]]; then
+  echo "Expected context compile status failed, got: $status" >&2
+  exit 1
+fi
+
+if [[ "$policy" != "required" ]]; then
+  echo "Expected context compile policy required, got: $policy" >&2
+  exit 1
+fi
+
+if [[ "$policy_outcome" != "blocked" ]]; then
+  echo "Expected policy_outcome blocked, got: $policy_outcome" >&2
+  exit 1
+fi
+
+if [[ "$pack_dir" != "$pack_rel" ]]; then
+  echo "Expected pack_dir $pack_rel, got: $pack_dir" >&2
   exit 1
 fi

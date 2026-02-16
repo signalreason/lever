@@ -16,6 +16,7 @@ pub struct RunPaths {
     pub assembly_summary_path: PathBuf,
     pub assembly_stdout_path: PathBuf,
     pub assembly_stderr_path: PathBuf,
+    pub context_compile_path: PathBuf,
 }
 
 pub fn run_paths(workspace: &Path, task_id: &str, run_id: &str) -> RunPaths {
@@ -36,6 +37,7 @@ pub fn run_paths(workspace: &Path, task_id: &str, run_id: &str) -> RunPaths {
     let assembly_summary_path = run_dir_abs.join("assembly-summary.json");
     let assembly_stdout_path = run_dir_abs.join("assembly.stdout.log");
     let assembly_stderr_path = run_dir_abs.join("assembly.stderr.log");
+    let context_compile_path = run_dir_abs.join("context-compile.json");
 
     RunPaths {
         run_dir_rel,
@@ -52,6 +54,7 @@ pub fn run_paths(workspace: &Path, task_id: &str, run_id: &str) -> RunPaths {
         assembly_summary_path,
         assembly_stdout_path,
         assembly_stderr_path,
+        context_compile_path,
     }
 }
 
@@ -107,6 +110,10 @@ mod tests {
         assert_eq!(
             paths.assembly_stderr_path,
             PathBuf::from("workspace/.ralph/runs/TASK-1/run-123/assembly.stderr.log")
+        );
+        assert_eq!(
+            paths.context_compile_path,
+            PathBuf::from("workspace/.ralph/runs/TASK-1/run-123/context-compile.json")
         );
     }
 }

@@ -484,10 +484,16 @@
         "All linters pass, including cargo fmt --check and cargo clippy --all-targets -- -D warnings."
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260216T023157Z-3274 completed",
+        "last_run_id": "20260216T023157Z-3274",
+        "last_update_utc": "2026-02-16T02:40:17Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Capture expected logging/note strings in tests first, then wire consistent structured messages at compile decision points."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "CTX-018",
       "title": "Record compile status and pack paths in run logs and task notes",
       "verification": {

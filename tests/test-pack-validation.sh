@@ -5,6 +5,7 @@ TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=helpers.sh
 source "$TEST_DIR/helpers.sh"
 
+require_cmd jq
 require_cmd git
 require_cmd cargo
 
@@ -192,6 +193,37 @@ for missing in "${required[@]}"; do
 
   if [[ -f "$marker_file" ]]; then
     echo "Expected required policy to fail before Codex execution (missing $missing)" >&2
+    exit 1
+  fi
+
+  run_dir="$(ls -td "$repo_dir/.ralph/runs/T1"/* | head -n 1)"
+  if [[ -z "$run_dir" ]]; then
+    echo "Expected run directory to exist (missing $missing)" >&2
+    exit 1
+  fi
+
+  compile_report="$run_dir/context-compile.json"
+  if [[ ! -f "$compile_report" ]]; then
+    echo "Expected context compile report at $compile_report (missing $missing)" >&2
+    exit 1
+  fi
+
+  status="$(jq -r '.status' "$compile_report")"
+  policy_outcome="$(jq -r '.policy_outcome' "$compile_report")"
+  missing_files="$(jq -r '.pack_missing | join(",")' "$compile_report")"
+
+  if [[ "$status" != "failed" ]]; then
+    echo "Expected context compile status failed (missing $missing), got: $status" >&2
+    exit 1
+  fi
+
+  if [[ "$policy_outcome" != "blocked" ]]; then
+    echo "Expected policy_outcome blocked (missing $missing), got: $policy_outcome" >&2
+    exit 1
+  fi
+
+  if [[ "$missing_files" != *"$missing"* ]]; then
+    echo "Expected pack_missing to include $missing, got: $missing_files" >&2
     exit 1
   fi
 done

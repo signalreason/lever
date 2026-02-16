@@ -151,6 +151,7 @@ pub fn run_task_agent(
     fs::create_dir_all(&paths.pack_dir_abs)?;
     let mut compiled_context_path: Option<PathBuf> = None;
     let mut lint_summary_path: Option<PathBuf> = None;
+    let mut context_report = ContextCompileReport::new(&paths, &config.context_compile);
 
     fs::write(
         &paths.task_snapshot_path,
@@ -212,6 +213,20 @@ pub fn run_task_agent(
                         paths.assembly_stdout_path.display(),
                         paths.assembly_stderr_path.display()
                     );
+                    let policy_outcome =
+                        if config.context_compile.policy == ContextFailurePolicy::Required {
+                            "blocked"
+                        } else {
+                            "continued"
+                        };
+                    context_report.mark_failed(err.missing.clone(), policy_outcome);
+                    emit_context_compile_report(
+                        &context_report,
+                        &paths,
+                        &selection.task_id,
+                        &run_id,
+                    )?;
+                    let note = append_context_compile_note(&note, &context_report);
                     if config.context_compile.policy == ContextFailurePolicy::Required {
                         increment_attempt_count(&config.tasks_path, &selection.task_id)?;
                         update_task_status(
@@ -257,6 +272,13 @@ pub fn run_task_agent(
                     if config.include_lint_summary {
                         lint_summary_path = Some(paths.pack_dir_abs.join("lint.json"));
                     }
+                    context_report.mark_success();
+                    emit_context_compile_report(
+                        &context_report,
+                        &paths,
+                        &selection.task_id,
+                        &run_id,
+                    )?;
                 }
             }
             AssemblyOutcome::Interrupted => {
@@ -282,6 +304,16 @@ pub fn run_task_agent(
                     paths.assembly_stdout_path.display(),
                     paths.assembly_stderr_path.display()
                 );
+                let missing = pack_missing_files(&paths.pack_dir_abs);
+                let policy_outcome =
+                    if config.context_compile.policy == ContextFailurePolicy::Required {
+                        "blocked"
+                    } else {
+                        "continued"
+                    };
+                context_report.mark_failed(missing, policy_outcome);
+                emit_context_compile_report(&context_report, &paths, &selection.task_id, &run_id)?;
+                let note = append_context_compile_note(&note, &context_report);
                 if config.context_compile.policy == ContextFailurePolicy::Required {
                     increment_attempt_count(&config.tasks_path, &selection.task_id)?;
                     update_task_status(
@@ -322,6 +354,9 @@ pub fn run_task_agent(
                 eprintln!("Warning: {}", note);
             }
         }
+    } else {
+        context_report.mark_skipped();
+        emit_context_compile_report(&context_report, &paths, &selection.task_id, &run_id)?;
     }
 
     ensure_schema_file(&config.workspace)?;
@@ -467,17 +502,21 @@ pub fn run_task_agent(
             .unwrap_or(0)
             == 0
     {
+        let note = append_context_compile_note(
+            &format!(
+                "Codex produced no result.json (exit={}). See {}",
+                codex_exit,
+                paths.codex_log_rel.display()
+            ),
+            &context_report,
+        );
         increment_attempt_count(&config.tasks_path, &selection.task_id)?;
         update_task_status(
             &config.tasks_path,
             &selection.task_id,
             "blocked",
             &run_id,
-            &format!(
-                "Codex produced no result.json (exit={}). See {}",
-                codex_exit,
-                paths.codex_log_rel.display()
-            ),
+            &note,
         )?;
         git_commit_progress(&config.workspace, &selection.title, &selection.task_id)?;
         log_line(
@@ -602,13 +641,15 @@ pub fn run_task_agent(
     }
 
     if dod_met && verify.ok {
+        let note =
+            append_context_compile_note(&format!("Run {} completed", run_id), &context_report);
         increment_attempt_count(&config.tasks_path, &selection.task_id)?;
         update_task_status(
             &config.tasks_path,
             &selection.task_id,
             "completed",
             &run_id,
-            &format!("Run {} completed", run_id),
+            &note,
         )?;
         git_commit_progress(&config.workspace, &selection.title, &selection.task_id)?;
         finalize_successful_task(&config.workspace, &selection.task_id, &selection.title)?;
@@ -650,6 +691,7 @@ pub fn run_task_agent(
         verify.ok,
         paths.result_path_rel.display()
     );
+    let note = append_context_compile_note(&note, &context_report);
     increment_attempt_count(&config.tasks_path, &selection.task_id)?;
     update_task_status(
         &config.tasks_path,
@@ -885,7 +927,7 @@ fn ensure_schema_file(workspace: &Path) -> Result<(), DynError> {
     Ok(())
 }
 
-fn validate_pack_outputs(pack_dir: &Path) -> Result<(), PackValidationError> {
+fn pack_missing_files(pack_dir: &Path) -> Vec<String> {
     let mut missing = Vec::new();
     for required in REQUIRED_PACK_FILES {
         let candidate = pack_dir.join(required);
@@ -893,7 +935,139 @@ fn validate_pack_outputs(pack_dir: &Path) -> Result<(), PackValidationError> {
             missing.push((*required).to_string());
         }
     }
+    missing
+}
 
+fn pack_expected_paths(pack_dir_rel: &Path) -> Vec<String> {
+    REQUIRED_PACK_FILES
+        .iter()
+        .map(|required| pack_dir_rel.join(required).display().to_string())
+        .collect()
+}
+
+fn context_failure_policy_label(policy: ContextFailurePolicy) -> &'static str {
+    match policy {
+        ContextFailurePolicy::BestEffort => "best-effort",
+        ContextFailurePolicy::Required => "required",
+    }
+}
+
+#[derive(Debug, Clone)]
+struct ContextCompileReport {
+    enabled: bool,
+    status: String,
+    policy: String,
+    policy_outcome: String,
+    pack_dir: String,
+    pack_files: Vec<String>,
+    pack_missing: Vec<String>,
+}
+
+impl ContextCompileReport {
+    fn new(paths: &crate::run_paths::RunPaths, config: &ContextCompileConfig) -> Self {
+        Self {
+            enabled: config.enabled,
+            status: "skipped".to_string(),
+            policy: context_failure_policy_label(config.policy).to_string(),
+            policy_outcome: "skipped".to_string(),
+            pack_dir: paths.pack_dir_rel.display().to_string(),
+            pack_files: pack_expected_paths(&paths.pack_dir_rel),
+            pack_missing: Vec::new(),
+        }
+    }
+
+    fn mark_skipped(&mut self) {
+        self.status = "skipped".to_string();
+        self.policy_outcome = "skipped".to_string();
+        self.pack_missing.clear();
+    }
+
+    fn mark_success(&mut self) {
+        self.status = "succeeded".to_string();
+        self.policy_outcome = "proceeded".to_string();
+        self.pack_missing.clear();
+    }
+
+    fn mark_failed(&mut self, missing: Vec<String>, policy_outcome: &str) {
+        self.status = "failed".to_string();
+        self.policy_outcome = policy_outcome.to_string();
+        self.pack_missing = missing;
+    }
+
+    fn log_level(&self) -> &'static str {
+        if self.status == "failed" {
+            "WARN"
+        } else {
+            "INFO"
+        }
+    }
+
+    fn log_kv(&self, task_id: &str, run_id: &str) -> Vec<String> {
+        vec![
+            format!("task_id={}", task_id),
+            format!("run_id={}", run_id),
+            format!("enabled={}", self.enabled),
+            format!("status={}", self.status),
+            format!("policy={}", self.policy),
+            format!("policy_outcome={}", self.policy_outcome),
+            format!("pack_dir={}", self.pack_dir),
+            format!("pack_missing={}", self.pack_missing.join(",")),
+        ]
+    }
+
+    fn note_fragment(&self) -> String {
+        let required = REQUIRED_PACK_FILES.join(",");
+        format!(
+            "context_compile={} policy={} policy_outcome={} pack_dir={} pack_files={} pack_missing={}",
+            self.status,
+            self.policy,
+            self.policy_outcome,
+            self.pack_dir,
+            required,
+            self.pack_missing.join(",")
+        )
+    }
+
+    fn write_report(&self, path: &Path) -> Result<(), DynError> {
+        let payload = json!({
+            "enabled": self.enabled,
+            "status": self.status,
+            "policy": self.policy,
+            "policy_outcome": self.policy_outcome,
+            "pack_dir": self.pack_dir,
+            "pack_files": self.pack_files,
+            "pack_missing": self.pack_missing,
+        });
+        fs::write(path, serde_json::to_string_pretty(&payload)?)?;
+        Ok(())
+    }
+}
+
+fn emit_context_compile_report(
+    report: &ContextCompileReport,
+    paths: &crate::run_paths::RunPaths,
+    task_id: &str,
+    run_id: &str,
+) -> Result<(), DynError> {
+    report.write_report(&paths.context_compile_path)?;
+    log_line(
+        report.log_level(),
+        "Context compile report",
+        &report.log_kv(task_id, run_id),
+    );
+    Ok(())
+}
+
+fn append_context_compile_note(note: &str, report: &ContextCompileReport) -> String {
+    if note.trim().is_empty() {
+        report.note_fragment()
+    } else {
+        format!("{}; {}", note.trim_end(), report.note_fragment())
+    }
+}
+
+fn validate_pack_outputs(pack_dir: &Path) -> Result<(), PackValidationError> {
+    let missing = pack_missing_files(pack_dir);
     if missing.is_empty() {
         Ok(())
     } else {
