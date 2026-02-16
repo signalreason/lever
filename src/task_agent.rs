@@ -18,6 +18,7 @@ use serde_json::{Map, Value};
 use lever::context_compile::ContextCompileConfig;
 
 use crate::rate_limit;
+use crate::run_paths::run_paths;
 use crate::task_metadata::validate_task_metadata;
 
 type DynError = Box<dyn Error + Send + Sync + 'static>;
@@ -122,15 +123,14 @@ pub fn run_task_agent(
 
     let run_attempt = current_attempts + 1;
 
-    let run_dir_rel = PathBuf::from(".ralph")
-        .join("runs")
-        .join(&selection.task_id)
-        .join(&run_id);
-    let run_dir_abs = config.workspace.join(&run_dir_rel);
-    fs::create_dir_all(&run_dir_abs)?;
+    let paths = run_paths(&config.workspace, &selection.task_id, &run_id);
+    fs::create_dir_all(&paths.run_dir_abs)?;
+    fs::create_dir_all(&paths.pack_dir_abs)?;
 
-    let task_snapshot_path = run_dir_abs.join("task.json");
-    fs::write(&task_snapshot_path, format!("{}\n", selection.raw_json))?;
+    fs::write(
+        &paths.task_snapshot_path,
+        format!("{}\n", selection.raw_json),
+    )?;
 
     ensure_schema_file(&config.workspace)?;
 
@@ -156,24 +156,18 @@ pub fn run_task_agent(
         ],
     );
 
-    let prompt_path = run_dir_abs.join("prompt.md");
     build_prompt(
         &config.prompt_path,
-        &prompt_path,
+        &paths.prompt_path,
         &selection.title,
         &selection.definition_of_done,
         &selection.recommended_approach,
-        &task_snapshot_path,
+        &paths.task_snapshot_path,
     )?;
 
-    let result_path_rel = run_dir_rel.join("result.json");
-    let result_path_abs = config.workspace.join(&result_path_rel);
-    let codex_log_rel = run_dir_rel.join("codex.jsonl");
-    let codex_log_abs = config.workspace.join(&codex_log_rel);
+    let codex_stream = CodexLogStream::start(&paths.codex_log_abs, &selection.task_id, &run_id)?;
 
-    let codex_stream = CodexLogStream::start(&codex_log_abs, &selection.task_id, &run_id)?;
-
-    let estimated_tokens = rate_limit::estimate_prompt_tokens(&prompt_path);
+    let estimated_tokens = rate_limit::estimate_prompt_tokens(&paths.prompt_path);
     rate_limit_sleep(
         &config.workspace.join(RATE_LIMIT_FILE),
         &selection.model,
@@ -207,10 +201,10 @@ pub fn run_task_agent(
         codex_exit = run_codex(
             &config.workspace,
             &selection.model,
-            &prompt_path,
+            &paths.prompt_path,
             Path::new(SCHEMA_PATH),
-            &result_path_rel,
-            &codex_log_rel,
+            &paths.result_path_rel,
+            &paths.codex_log_rel,
             shutdown_flag,
         )?;
         log_line(
@@ -236,12 +230,18 @@ pub fn run_task_agent(
             );
         }
 
-        if result_path_abs.is_file() && result_path_abs.metadata().map(|m| m.len()).unwrap_or(0) > 0
+        if paths.result_path_abs.is_file()
+            && paths
+                .result_path_abs
+                .metadata()
+                .map(|m| m.len())
+                .unwrap_or(0)
+                > 0
         {
             break;
         }
 
-        if let Some(delay) = rate_limit_retry_delay(&codex_log_abs)? {
+        if let Some(delay) = rate_limit_retry_delay(&paths.codex_log_abs)? {
             if delay > 0 {
                 eprintln!(
                     "Rate limit retry: sleeping {}s before retry {}/3.",
@@ -257,14 +257,21 @@ pub fn run_task_agent(
 
     codex_stream.stop();
 
-    let tokens_used = parse_usage_tokens(&codex_log_abs).unwrap_or(estimated_tokens);
+    let tokens_used = parse_usage_tokens(&paths.codex_log_abs).unwrap_or(estimated_tokens);
     record_rate_usage(
         &config.workspace.join(RATE_LIMIT_FILE),
         &selection.model,
         tokens_used,
     )?;
 
-    if !result_path_abs.is_file() || result_path_abs.metadata().map(|m| m.len()).unwrap_or(0) == 0 {
+    if !paths.result_path_abs.is_file()
+        || paths
+            .result_path_abs
+            .metadata()
+            .map(|m| m.len())
+            .unwrap_or(0)
+            == 0
+    {
         increment_attempt_count(&config.tasks_path, &selection.task_id)?;
         update_task_status(
             &config.tasks_path,
@@ -274,7 +281,7 @@ pub fn run_task_agent(
             &format!(
                 "Codex produced no result.json (exit={}). See {}",
                 codex_exit,
-                codex_log_rel.display()
+                paths.codex_log_rel.display()
             ),
         )?;
         git_commit_progress(&config.workspace, &selection.title, &selection.task_id)?;
@@ -289,12 +296,12 @@ pub fn run_task_agent(
         );
         eprintln!(
             "Blocked: missing result.json. See {}",
-            codex_log_rel.display()
+            paths.codex_log_rel.display()
         );
         return Ok(10);
     }
 
-    let result: Value = serde_json::from_str(&fs::read_to_string(&result_path_abs)?)?;
+    let result: Value = serde_json::from_str(&fs::read_to_string(&paths.result_path_abs)?)?;
     let reported_outcome = result
         .get("outcome")
         .and_then(Value::as_str)
@@ -366,7 +373,7 @@ pub fn run_task_agent(
     let verify = if dod_met {
         run_verification(
             &config.workspace,
-            &run_dir_abs,
+            &paths.run_dir_abs,
             &selection.verification_commands,
         )?
     } else {
@@ -382,7 +389,7 @@ pub fn run_task_agent(
                     format!("task_id={}", selection.task_id),
                     format!("run_id={}", run_id),
                     format!("command={}", verify.log_command.as_deref().unwrap_or("")),
-                    format!("log={}", run_dir_abs.join("verify.log").display()),
+                    format!("log={}", paths.run_dir_abs.join("verify.log").display()),
                 ],
             );
         } else {
@@ -393,7 +400,7 @@ pub fn run_task_agent(
                     format!("task_id={}", selection.task_id),
                     format!("run_id={}", run_id),
                     format!("command={}", verify.log_command.as_deref().unwrap_or("")),
-                    format!("log={}", run_dir_abs.join("verify.log").display()),
+                    format!("log={}", paths.run_dir_abs.join("verify.log").display()),
                 ],
             );
         }
@@ -446,7 +453,7 @@ pub fn run_task_agent(
         reported_outcome,
         dod_met,
         verify.ok,
-        result_path_rel.display()
+        paths.result_path_rel.display()
     );
     increment_attempt_count(&config.tasks_path, &selection.task_id)?;
     update_task_status(

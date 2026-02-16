@@ -21,6 +21,7 @@ use lever::context_compile::{ContextCompileConfig, ContextFailurePolicy};
 use serde_json::Value;
 
 mod rate_limit;
+mod run_paths;
 mod task_agent;
 mod task_metadata;
 
