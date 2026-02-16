@@ -138,6 +138,7 @@ EOF2
 chmod +x "$stub_bin/assembly"
 
 init_git_repo "$repo_dir"
+commit_sha="$(git -C "$repo_dir" rev-parse --short=12 HEAD)"
 
 (
   cd "$repo_root"
@@ -161,6 +162,8 @@ if [[ -z "$run_dir" ]]; then
   exit 1
 fi
 
+manifest_rel="${run_dir#"$repo_dir"/}/pack/manifest.json"
+
 prompt_file="$run_dir/prompt.md"
 if [[ ! -f "$prompt_file" ]]; then
   echo "Expected prompt at $prompt_file" >&2
@@ -168,7 +171,7 @@ if [[ ! -f "$prompt_file" ]]; then
 fi
 
 expected_file="$repo_dir/expected-prompt.txt"
-cat > "$expected_file" <<'EOF'
+cat > "$expected_file" <<EOF
 Test prompt
 
 
@@ -184,6 +187,7 @@ Task JSON (authoritative):
 {"definition_of_done":["Append compiled context"],"model":"gpt-5.1-codex-mini","recommended":{"approach":"Use compiled context"},"status":"unstarted","task_id":"T1","title":"Prompt context append"}
 
 Compiled context:
+Provenance: manifest=$manifest_rel commit=$commit_sha
 Compiled context line 1
 Compiled context line 2
 EOF

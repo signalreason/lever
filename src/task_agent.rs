@@ -343,15 +343,16 @@ pub fn run_task_agent(
         ],
     );
 
-    build_prompt(
-        &config.prompt_path,
-        &paths.prompt_path,
-        &selection.title,
-        &selection.definition_of_done,
-        &selection.recommended_approach,
-        &paths.task_snapshot_path,
-        compiled_context_path.as_deref(),
-    )?;
+    build_prompt(PromptBuildInput {
+        workspace: &config.workspace,
+        base_prompt: &config.prompt_path,
+        prompt_path: &paths.prompt_path,
+        title: &selection.title,
+        dod: &selection.definition_of_done,
+        recommended: &selection.recommended_approach,
+        task_snapshot: &paths.task_snapshot_path,
+        compiled_context: compiled_context_path.as_deref(),
+    })?;
 
     let codex_stream = CodexLogStream::start(&paths.codex_log_abs, &selection.task_id, &run_id)?;
 
@@ -897,38 +898,42 @@ fn validate_pack_outputs(pack_dir: &Path) -> Result<(), PackValidationError> {
     }
 }
 
-fn build_prompt(
-    base_prompt: &Path,
-    prompt_path: &Path,
-    title: &str,
-    dod: &[String],
-    recommended: &str,
-    task_snapshot: &Path,
-    compiled_context: Option<&Path>,
-) -> Result<(), DynError> {
-    let mut prompt = fs::read_to_string(base_prompt)?;
+struct PromptBuildInput<'a> {
+    workspace: &'a Path,
+    base_prompt: &'a Path,
+    prompt_path: &'a Path,
+    title: &'a str,
+    dod: &'a [String],
+    recommended: &'a str,
+    task_snapshot: &'a Path,
+    compiled_context: Option<&'a Path>,
+}
+
+fn build_prompt(input: PromptBuildInput<'_>) -> Result<(), DynError> {
+    let mut prompt = fs::read_to_string(input.base_prompt)?;
     prompt.push_str("\n\n");
-    prompt.push_str(&format!("Task title: {}\n", title));
+    prompt.push_str(&format!("Task title: {}\n", input.title));
     prompt.push_str("\nDefinition of done:\n");
-    for item in dod {
+    for item in input.dod {
         prompt.push_str(&format!("  - {}\n", item));
     }
     prompt.push_str("\nRecommended approach:\n");
-    prompt.push_str(recommended);
+    prompt.push_str(input.recommended);
     prompt.push('\n');
     prompt.push_str("\nTask JSON (authoritative):\n");
-    prompt.push_str(&fs::read_to_string(task_snapshot)?);
+    prompt.push_str(&fs::read_to_string(input.task_snapshot)?);
     if !prompt.ends_with('\n') {
         prompt.push('\n');
     }
-    append_compiled_context(&mut prompt, compiled_context)?;
-    fs::write(prompt_path, prompt)?;
+    append_compiled_context(&mut prompt, input.compiled_context, input.workspace)?;
+    fs::write(input.prompt_path, prompt)?;
     Ok(())
 }
 
 fn append_compiled_context(
     prompt: &mut String,
     compiled_context: Option<&Path>,
+    workspace: &Path,
 ) -> Result<(), DynError> {
     let Some(path) = compiled_context else {
         return Ok(());
@@ -940,12 +945,34 @@ fn append_compiled_context(
     if context.trim().is_empty() {
         return Ok(());
     }
+    let manifest_path = path.parent().ok_or_else(|| {
+        format!(
+            "Compiled context path {} has no parent directory",
+            path.display()
+        )
+    })?;
+    let manifest_path = manifest_path.join("manifest.json");
+    let manifest_display = display_workspace_path(&manifest_path, workspace);
+    let commit_sha = git_output(workspace, &["rev-parse", "--short=12", "HEAD"])?;
+    let commit_sha = commit_sha.trim();
     prompt.push_str("\nCompiled context:\n");
+    prompt.push_str(&format!(
+        "Provenance: manifest={} commit={}\n",
+        manifest_display, commit_sha
+    ));
     prompt.push_str(&context);
     if !prompt.ends_with('\n') {
         prompt.push('\n');
     }
     Ok(())
+}
+
+fn display_workspace_path(path: &Path, workspace: &Path) -> String {
+    if let Ok(relative) = path.strip_prefix(workspace) {
+        relative.display().to_string()
+    } else {
+        path.display().to_string()
+    }
 }
 
 fn build_assembly_task_input(selection: &SelectedTask) -> Value {
