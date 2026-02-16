@@ -147,6 +147,17 @@ if [[ -z "$run_dir" ]]; then
   exit 1
 fi
 
+prompt_file="$run_dir/prompt.md"
+if [[ ! -f "$prompt_file" ]]; then
+  echo "Expected prompt to be written at $prompt_file" >&2
+  exit 1
+fi
+
+if grep -q "Compiled context:" "$prompt_file"; then
+  echo "Expected prompt to omit compiled context after best-effort failure" >&2
+  exit 1
+fi
+
 pack_rel="${run_dir#"$repo_dir"/}/pack"
 note="$(jq -r '.tasks[0].observability.last_note // ""' "$repo_dir/prd.json")"
 if [[ "$note" != *"context_compile=failed"* ]]; then

@@ -540,10 +540,16 @@
         "All linters pass, including cargo fmt --check and cargo clippy --all-targets -- -D warnings."
       ],
       "model": "gpt-5.2-codex",
+      "observability": {
+        "last_note": "Run 20260216T024321Z-3274 completed",
+        "last_run_id": "20260216T024321Z-3274",
+        "last_update_utc": "2026-02-16T02:45:47Z",
+        "run_attempts": 1
+      },
       "recommended": {
         "approach": "Create a failing integration test with an intentionally failing Assembly stub, then implement best-effort continuation semantics."
       },
-      "status": "unstarted",
+      "status": "completed",
       "task_id": "CTX-020",
       "title": "Add integration test for best-effort compile failure behavior",
       "verification": {
